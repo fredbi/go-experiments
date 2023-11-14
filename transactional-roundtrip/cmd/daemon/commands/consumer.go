@@ -1,29 +1,31 @@
 package commands
 
 import (
-	"github.com/fredbi/go-trace/log"
+	"github.com/fredbi/go-experiments/transactional-roundtrip/pkg/consumer"
+	"github.com/fredbi/go-experiments/transactional-roundtrip/pkg/nats"
 	"github.com/spf13/cobra"
 )
 
-func consumer(c *cobra.Command, _ []string) error {
-	ctx, zlg, cfg := resolveInjected(c)
-	lg := log.NewFactory(zlg.Named("consumer"))
-
-	// open DB
-	db, err := ensureDB(cfg, false)
+func consumerCommand(c *cobra.Command, _ []string) error {
+	rt, err := newRuntimeForCommand(c)
 	if err != nil {
 		return err
 	}
+
+	// 1. Start a NATS embedded server in the background
+	server := nats.New(rt)
+	if err = server.Start(); err != nil {
+		return err
+	}
 	defer func() {
-		_ = db.Close()
+		_ = server.Stop()
 	}()
 
-	rt := runtime{
-		db:     db,
-		logger: lg,
-		cfg:    cfg,
-	}
+	// 2. Start a producer client
+	consumer := consumer.New(rt, rt.ID())
+	defer func() {
+		_ = rt.Close()
+	}()
 
-	// serve consumer
-	return nil
+	return consumer.Start()
 }

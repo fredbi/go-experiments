@@ -1,0 +1,12 @@
+app:
+  producer:
+    # http port to submit messages
+    port: 9090
+  consumer: {}
+
+nats: ~
+
+databases:
+  postgres:
+    default:
+      url: postgresql://postgres@localhost:5432/messagedb?sslmode=disable

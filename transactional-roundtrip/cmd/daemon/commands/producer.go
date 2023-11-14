@@ -1,37 +1,32 @@
 package commands
 
 import (
-	"time"
-
-	"github.com/fredbi/go-experiments/transactional-roundtrip/pkg/produce"
-	"github.com/goombaio/namegenerator"
+	"github.com/fredbi/go-experiments/transactional-roundtrip/pkg/nats"
+	"github.com/fredbi/go-experiments/transactional-roundtrip/pkg/producer"
 	"github.com/spf13/cobra"
 )
 
-const daemonName = "producer"
-
-func producer(c *cobra.Command, _ []string) error {
-	ctx, zlg, cfg := resolveInjected(c)
-	lg := log.NewFactory(zlg.Named(daemonName))
-
-	// open DB
-	db, err := ensureDB(cfg, false)
+func producerCommand(c *cobra.Command, _ []string) error {
+	rt, err := newRuntimeForCommand(c)
 	if err != nil {
 		return err
 	}
+
+	// 1. Start a NATS embedded server in the background
+	server := nats.New(rt)
+	if err = server.Start(); err != nil {
+		return err
+	}
 	defer func() {
-		_ = db.Close()
+		_ = server.Stop()
 	}()
 
-	rt := runtime{
-		db:     db,
-		logger: lg,
-		cfg:    cfg,
-	}
-	// serve producer
-	generator := namegenerator.NewNameGenerator(time.Now().UTC().UnixNano())
-	id := namer.Generate()
-	producer := produce.New(rt, id)
+	// 2. Start a producer client
+	producer := producer.New(rt, rt.ID())
+	defer func() {
+		_ = producer.Stop()
+		_ = rt.Close()
+	}()
 
 	return producer.Start()
 }
