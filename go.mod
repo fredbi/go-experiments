@@ -10,11 +10,12 @@ replace github.com/fredbi/gooseplus => /home/fred/src/github.com/fredbi/gooseplu
 
 require (
 	github.com/Masterminds/squirrel v1.5.4
-	github.com/cockroachdb/apd v1.1.0
+	github.com/cockroachdb/apd/v3 v3.2.1
 	github.com/fredbi/go-cli v0.2.1
 	github.com/fredbi/go-patterns v0.1.1
 	github.com/fredbi/go-trace v1.0.0
 	github.com/fredbi/gooseplus v1.1.1
+	github.com/go-chi/chi/v5 v5.0.10
 	github.com/goccy/go-json v0.10.2
 	github.com/goombaio/namegenerator v0.0.0-20181006234301-989e774b106e
 	github.com/jackc/pgx-zap v0.0.0-20221202020421-94b1cb2f889f
@@ -34,6 +35,7 @@ require (
 
 require (
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
+	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/fredbi/gflag v0.1.1 // indirect
 	github.com/fsnotify/fsnotify v1.7.0 // indirect
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
@@ -57,7 +59,6 @@ require (
 	github.com/nats-io/nkeys v0.4.6 // indirect
 	github.com/nats-io/nuid v1.0.1 // indirect
 	github.com/pelletier/go-toml/v2 v2.1.0 // indirect
-	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/pressly/goose/v3 v3.15.1 // indirect
 	github.com/rogpeppe/go-internal v1.10.0 // indirect

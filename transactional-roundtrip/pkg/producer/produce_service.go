@@ -3,20 +3,17 @@ package producer
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
 	"encoding/gob"
 	"errors"
-	"net/http"
 	"time"
 
 	"github.com/fredbi/go-experiments/transactional-roundtrip/pkg/injected"
+	natsembedded "github.com/fredbi/go-experiments/transactional-roundtrip/pkg/nats"
 	"github.com/fredbi/go-experiments/transactional-roundtrip/pkg/repos"
 
 	"github.com/fredbi/go-trace/log"
 	"github.com/fredbi/go-trace/tracer"
-	json "github.com/goccy/go-json"
 	nats "github.com/nats-io/nats.go"
-	"github.com/oklog/ulid"
 	"go.uber.org/zap"
 )
 
@@ -33,9 +30,18 @@ type (
 		subscribedSubject string
 		nc                *nats.Conn
 
-		// settings
-		replayBatchSize   uint64
+		producerSettings
+	}
+
+	producerSettings struct {
+		// API
 		jsonDecodeTimeout time.Duration
+
+		// replay
+		replayBatchSize uint64
+		replayWakeUp    time.Duration
+
+		msgProcessTimeout time.Duration
 	}
 )
 
@@ -50,68 +56,11 @@ func (p Producer) Logger() log.Factory {
 	return p.rt.Logger()
 }
 
-func (p Producer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	// TODO: separate HTTP handlers in a different object
-	if r.Method != "POST" {
-		w.WriteHeader(405)
-
-		return
-	}
-
-	err := p.publishRequest(r)
-	if err != nil {
-		lg := p.rt.Logger().For(r.Context())
-		lg.Warn("producing",
-			zap.String("outcome", "user request is cancelled"),
-			zap.Error(err),
-		)
-
-		w.WriteHeader(500)
-
-		return
-	}
-}
-
-// publishRequest takes a user input from the HTTP API, records this message then forwards this to the appropriate consumer.
-func (p Producer) publishRequest(r *http.Request) error {
-	parentCtx := r.Context()
-	ctx, span, lg := tracer.StartSpan(parentCtx, p)
-	defer span.End()
-
-	// decode the incoming JSON from the HTTP request
-	msg, err := p.decodeRequest(ctx, r)
-	if err != nil {
-		lg.Warn("request body could not be encoded",
-			zap.String("outcome", "incoming message is rejected"),
-			zap.Error(err),
-		)
-
-		return err
-	}
-
-	// determine a new UUID-like unique ID for this message
-	ts := time.Now().UTC()
-	uuid := ulid.MustNew(ulid.Timestamp(ts), rand.Reader)
-
-	msg.ID = uuid.String()
-	msg.ProducerID = p.ID
-	msg.InceptionTime = ts
-	msg.LastTime = ts
-	msg.MessageStatus = repos.MessageStatusNacked
-	msg.ProcessingStatus = repos.ProcessingStatusPending
-
-	if err := msg.Validate(); err != nil {
-		return err
-	}
-
-	return p.createAndSendMessage(ctx, msg)
-}
-
 func (p Producer) createAndSendMessage(parentCtx context.Context, msg repos.Message) error {
 	spanCtx, span, lg := tracer.StartSpan(parentCtx, p)
 	defer span.End()
 
-	ctx, cancel := context.WithCancel(spanCtx)
+	ctx, cancel := context.WithTimeout(spanCtx, p.msgProcessTimeout)
 	defer cancel()
 
 	lg = lg.With(zap.String("id", msg.ID))
@@ -164,29 +113,14 @@ func (p Producer) createAndSendMessage(parentCtx context.Context, msg repos.Mess
 	return nil
 }
 
-// decodeRequest attempts to decode an incoming JSON user input to build a Message prototype
-func (p Producer) decodeRequest(parenCtx context.Context, r *http.Request) (repos.Message, error) {
-	ctx, cancel := context.WithTimeout(parenCtx, p.jsonDecodeTimeout)
-	defer cancel()
-
-	var v repos.InputPayload
-	dec := json.NewDecoder(r.Body)
-	dec.DisallowUnknownFields()
-	if err := dec.DecodeContext(ctx, &v); err != nil {
-		return repos.Message{}, err
-	}
-
-	return v.AsMessage(), nil
-}
-
 // subscriptionHandler processes responses from consumers.
 //
 // It updates the processing status then sends back a confirmation.
 //
 // Until confirmations are acknowledged by the consumer, it will keep redelivering responses.
 func (p Producer) subscriptionHandler(incoming *nats.Msg) {
-	spanCtx := spanContextFromHeaders(context.Background(), incoming)
-	parentCtx, cancel := context.WithTimeout(spanCtx, 10*time.Second) // TODO: configurable producer settting
+	spanCtx := natsembedded.SpanContextFromHeaders(context.Background(), incoming)
+	parentCtx, cancel := context.WithTimeout(spanCtx, p.msgProcessTimeout)
 	defer cancel()
 
 	ctx, span, lg := tracer.StartSpan(parentCtx, p)
@@ -230,7 +164,6 @@ func (p Producer) subscriptionHandler(incoming *nats.Msg) {
 		lg.Info("message has been rejected by correspondant")
 	default:
 		lg.Error("unexpected response processing status",
-			zap.String("outcome", "message thrown away"),
 			zap.String("outcome", "message thrown away"),
 			zap.Stringer("message_status", msg.MessageStatus),
 			zap.Stringer("processing_status", msg.MessageStatus),

@@ -29,7 +29,7 @@ type (
 		// fetched rows.
 		List(context.Context, MessagePredicate) (MessageIterator, error)
 
-		// UpdateConfirmed is an entry point for consumers to store their own view of the processing status
-		UpdateConfirmed(context.Context, string, ProcessingStatus) error
+		// UpdateConfirmed is an entry point for consumers to store their own view of the message status
+		UpdateConfirmed(context.Context, string, MessageStatus) error
 	}
 )

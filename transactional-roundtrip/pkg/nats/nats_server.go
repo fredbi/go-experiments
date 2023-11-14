@@ -1,6 +1,7 @@
 package nats
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"net/url"
@@ -10,6 +11,9 @@ import (
 	"github.com/fredbi/go-experiments/transactional-roundtrip/pkg/injected"
 	natsconfigkeys "github.com/fredbi/go-experiments/transactional-roundtrip/pkg/nats/config-keys"
 	"github.com/nats-io/nats-server/v2/server"
+	"github.com/nats-io/nats.go"
+	"go.opencensus.io/plugin/ochttp/propagation/tracecontext"
+	"go.opencensus.io/trace"
 	"go.uber.org/zap"
 )
 
@@ -82,4 +86,20 @@ func (s *Server) Stop() error {
 	s.ns.WaitForShutdown()
 
 	return nil
+}
+
+var p = &tracecontext.HTTPFormat{}
+
+// SpanContextFromHeaders extracts a trace span from the headers of a NATS message.
+func SpanContextFromHeaders(parentCtx context.Context, msg *nats.Msg) context.Context {
+	traceID := msg.Header.Get("trace_id")
+	spanID := msg.Header.Get("span_id")
+	spanCtx, ok := p.SpanContextFromHeaders(traceID, spanID)
+	if !ok {
+		return parentCtx
+	}
+
+	ctx, _ := trace.StartSpanWithRemoteParent(parentCtx, "incoming NATS message", spanCtx)
+
+	return ctx
 }

@@ -6,21 +6,29 @@ import (
 	"github.com/spf13/viper"
 )
 
-// HTTP handler settings
+// General settings
 const (
-	Port              = "port"
-	JSONDecodeTimeout = "jsonDecodeTimeout"
+	MessageHandlingTimeout = "timeout"
+)
+
+// HTTP API handler settings
+const (
+	Port              = "api.port"
+	JSONDecodeTimeout = "api.jsonDecodeTimeout"
 )
 
 // Replay settings
 const (
-	ReplayBatchSize = "replayBatchSize"
+	ReplayBatchSize = "replay.batchSize"
+	ReplayWakeUp    = "replay.wakeup"
 )
 
 func SetDefaults(cfg *viper.Viper) {
 	cfg.SetDefault(Port, "9090")
 	cfg.SetDefault(JSONDecodeTimeout, 5*time.Millisecond)
 	cfg.SetDefault(ReplayBatchSize, 1000)
+	cfg.SetDefault(ReplayWakeUp, 30*time.Second)
+	cfg.SetDefault(MessageHandlingTimeout, 10*time.Second)
 }
 
 func DefaultProducerConfig() *viper.Viper {

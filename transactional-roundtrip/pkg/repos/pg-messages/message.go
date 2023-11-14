@@ -140,14 +140,14 @@ func (r *Repo) Create(parentCtx context.Context, message repos.Message) error {
 //
 // However, it is required for consumers to track confirmed messages:
 // confirmed messages won't be replayed any longer.
-func (r *Repo) UpdateConfirmed(parentCtx context.Context, id string, processingStatus repos.ProcessingStatus) error {
+func (r *Repo) UpdateConfirmed(parentCtx context.Context, id string, messageStatus repos.MessageStatus) error {
 	ctx, span, lg := tracer.StartSpan(parentCtx, r)
 	defer span.End()
 
 	query := psql.Update("message").
 		Where(sq.Eq{"id": id}).
-		Set("consumer_processing_status", processingStatus).
-		Where(sq.Expr(`consumer_processing_status < ?`, processingStatus))
+		Set("consumer_message_status", messageStatus).
+		Where(sq.Expr(`consumer_message_status < ?`, messageStatus))
 
 	q, args := query.MustSql()
 	lg.Debug("update message statement", zap.String("sql", q), zap.Any("args", args))
@@ -252,6 +252,9 @@ func (r *Repo) List(ctx context.Context, p repos.MessagePredicate) (repos.Messag
 	}
 	if p.Limit > 0 {
 		query = query.Limit(p.Limit)
+	}
+	if p.Unconfirmed {
+		query = query.Where(sq.Expr("consumer_message_status < ?", repos.MessageStatusConfirmed))
 	}
 
 	q, args := query.MustSql()

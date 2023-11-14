@@ -1,7 +1,8 @@
 app:
   producer:
-    # http port to submit messages
-    port: 9090
+    api:
+      # http port to submit messages
+      port: 9090
   consumer: {}
 
 nats: ~

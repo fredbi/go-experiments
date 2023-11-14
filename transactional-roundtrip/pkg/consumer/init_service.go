@@ -1,28 +1,23 @@
-package producer
+package consumer
 
 import (
 	"context"
 	"database/sql"
 	"errors"
 	"fmt"
-	"net/http"
 	"time"
 
+	consumerconfigkeys "github.com/fredbi/go-experiments/transactional-roundtrip/pkg/consumer/config-keys"
 	natsconfigkeys "github.com/fredbi/go-experiments/transactional-roundtrip/pkg/nats/config-keys"
-	producerconfigkeys "github.com/fredbi/go-experiments/transactional-roundtrip/pkg/producer/config-keys"
-	logmiddleware "github.com/fredbi/go-trace/log/middleware"
-	"github.com/fredbi/go-trace/tracer"
-	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
 	"github.com/nats-io/nats.go"
 	"github.com/spf13/viper"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 )
 
-func (p *Producer) Start() error {
-	natsConfig, producerConfig := p.configSections()
-	p.msgProcessTimeout = producerConfig.GetDuration(producerconfigkeys.MessageHandlingTimeout)
+func (p *Consumer) Start() error {
+	natsConfig, consumerConfig := p.configSections()
+	p.msgProcessTimeout = consumerConfig.GetDuration(consumerconfigkeys.MessageHandlingTimeout)
 	cancellable, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -34,18 +29,17 @@ func (p *Producer) Start() error {
 	}
 	defer cleanNats()
 
-	cleanReplayer, err := p.startReplayer(cancellable, producerConfig)
+	waitReplayer, err := p.startReplayer(cancellable, consumerConfig)
 	if err != nil {
 		cancel()
 
 		return err
 	}
-	defer cleanReplayer()
 
-	return p.startHTTPHandler(cancellable, producerConfig)
+	return waitReplayer()
 }
 
-func (p *Producer) startNatsClient(_ context.Context, natsConfig *viper.Viper) (func(), error) {
+func (p *Consumer) startNatsClient(_ context.Context, natsConfig *viper.Viper) (func(), error) {
 	lg := p.rt.Logger().Bg().With(zap.String("operation", "start"))
 
 	// settings for NATS
@@ -55,9 +49,9 @@ func (p *Producer) startNatsClient(_ context.Context, natsConfig *viper.Viper) (
 	resultsTopic := natsConfig.GetString(natsconfigkeys.ResultsTopic)
 
 	p.publishedSubject = func(recipientID string) string {
-		return fmt.Sprintf("%s.%s", postingsTopic, recipientID)
+		return fmt.Sprintf("%s.%s", resultsTopic, recipientID)
 	}
-	p.subscribedSubject = fmt.Sprintf("%s.%s", resultsTopic, p.ID)
+	p.subscribedSubject = fmt.Sprintf("%s.%s", postingsTopic, p.ID)
 
 	// connect to the NATS cluster
 	nc, err := nats.Connect(natsURL,
@@ -70,7 +64,7 @@ func (p *Producer) startNatsClient(_ context.Context, natsConfig *viper.Viper) (
 
 	p.nc = nc
 
-	// subscribe to the the responses queue, with the ProducerID as subject
+	// subscribe to the the responses queue, with the ConsumerID as subject
 	subscription, err := nc.QueueSubscribe(p.subscribedSubject, p.ID, p.subscriptionHandler)
 	if err != nil {
 		return nil, err
@@ -80,25 +74,25 @@ func (p *Producer) startNatsClient(_ context.Context, natsConfig *viper.Viper) (
 		_ = subscription.Unsubscribe()
 	}
 
-	lg.Info("producer connected to NATS cluster", zap.String("producer_id", p.ID), zap.String("url", natsURL), zap.String("cluster_id", clusterID))
+	lg.Info("consumer connected to NATS cluster", zap.String("consumer_id", p.ID), zap.String("url", natsURL), zap.String("cluster_id", clusterID))
 
 	return clean, nil
 }
 
 //nolint:unparam
-func (p *Producer) startReplayer(ctx context.Context, producerConfig *viper.Viper) (func(), error) {
+func (p *Consumer) startReplayer(ctx context.Context, consumerConfig *viper.Viper) (func() error, error) {
 	// Replays of unacked and messages in the background
-	p.replayBatchSize = producerConfig.GetUint64(producerconfigkeys.ReplayBatchSize)
-	p.replayWakeUp = producerConfig.GetDuration(producerconfigkeys.ReplayWakeUp)
+	p.replayBatchSize = consumerConfig.GetUint64(consumerconfigkeys.ReplayBatchSize)
+	p.replayWakeUp = consumerConfig.GetDuration(consumerconfigkeys.ReplayWakeUp)
 
 	group, groupCtx := errgroup.WithContext(ctx)
 	group.Go(p.replayer(groupCtx))
 
-	return func() { _ = group.Wait() }, nil
+	return func() error { return group.Wait() }, nil
 }
 
 // replayer starts a background replayer of un-acked messages
-func (p Producer) replayer(ctx context.Context) func() error {
+func (p Consumer) replayer(ctx context.Context) func() error {
 	lg := p.Logger().For(ctx).With(zap.String("operation", "http-handler"))
 
 	return func() error {
@@ -133,27 +127,7 @@ func (p Producer) replayer(ctx context.Context) func() error {
 	}
 }
 
-func (p *Producer) startHTTPHandler(ctx context.Context, producerConfig *viper.Viper) error {
-	lg := p.rt.Logger().For(ctx).With(zap.String("module", "http-handler"))
-	p.jsonDecodeTimeout = producerConfig.GetDuration(producerconfigkeys.JSONDecodeTimeout)
-
-	router := chi.NewRouter()
-	router.Use(middleware.Recoverer)
-	router.Use(tracer.Middleware())
-	router.Use(logmiddleware.LogRequests(p.rt.Logger()))
-	router.Route("/", func(r chi.Router) {
-		r.Post("/message", p.createMessage)
-		r.Get("/message/{id}", p.getMessage)
-		r.Get("/messages", p.listMessages)
-	})
-
-	addr := ":" + producerConfig.GetString(producerconfigkeys.Port)
-	lg.Info("listening on", zap.String("endpoint", addr))
-
-	return http.ListenAndServe(addr, router) //#nosec
-}
-
-func (p *Producer) Stop() error {
+func (p *Consumer) Stop() error {
 	if p.nc == nil {
 		return nil
 	}

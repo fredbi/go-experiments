@@ -6,7 +6,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/cockroachdb/apd"
+	"github.com/cockroachdb/apd/v3"
 )
 
 // Errors returned by this repo
@@ -15,8 +15,12 @@ var (
 )
 
 type (
+	// Decimal is an exact decimal type that knows
+	// how to marshal/unmarshal from JSON and DB.
 	Decimal = apd.Decimal
 
+	// Message contains a Payload for processing as well a various headers used
+	// ensure a no loss transmission.
 	Message struct {
 		ID         string `json:"id" db:"id"`
 		ProducerID string `json:"producer_id" db:"producer_id"`
@@ -68,6 +72,7 @@ type (
 		FromProducer         *string
 		FromConsumer         *string
 		Limit                uint64
+		Unconfirmed          bool
 
 		_ struct{}
 	}

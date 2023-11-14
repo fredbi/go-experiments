@@ -117,7 +117,7 @@ func (s *ProcessingStatus) UnmarshalText(data []byte) error {
 	return nil
 }
 
-// Operation types.
+// Operation types
 const (
 	OperationTypeDebit OperationType = iota + 1
 	OperationTypeCredit
