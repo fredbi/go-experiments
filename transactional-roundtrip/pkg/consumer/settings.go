@@ -15,6 +15,7 @@ var defaultSettings = settings{
 			WakeUp:    30 * time.Second,
 		},
 		MsgProcessTimeout: 5 * time.Second,
+		ProcessTimeout:    30 * time.Second,
 	},
 }
 
@@ -26,6 +27,7 @@ type settings struct {
 type consumerSettings struct {
 	Replay            replaySettings
 	MsgProcessTimeout time.Duration
+	ProcessTimeout    time.Duration
 }
 
 type replaySettings struct {

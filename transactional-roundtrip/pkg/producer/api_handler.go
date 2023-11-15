@@ -61,7 +61,7 @@ func (p Producer) getMessage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (p Producer) listMessages(w http.ResponseWriter, _ *http.Request) {
-	// TODO
+	// TODO: add list handler
 	w.WriteHeader(http.StatusNotImplemented)
 }
 

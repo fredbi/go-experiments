@@ -140,7 +140,7 @@ func (p Consumer) subscriptionHandler(incoming *nats.Msg) {
 			)
 		}
 
-	case repos.MessageStatusConfirmed: // TODO: use Received status instead
+	case repos.MessageStatusReceived:
 		// ok. confirmation from producer: update private status
 		if err := p.rt.Repos().Messages().UpdateConfirmed(ctx, msg.ID, repos.MessageStatusConfirmed); err != nil {
 			if errors.Is(err, repos.ErrAlreadyProcessed) {
@@ -156,9 +156,6 @@ func (p Consumer) subscriptionHandler(incoming *nats.Msg) {
 			}
 		}
 
-	case repos.MessageStatusReceived:
-		// status not visible to consumer
-		fallthrough
 	default:
 		lg.Error("unexpected response status",
 			zap.String("outcome", "message thrown away"),
@@ -172,9 +169,10 @@ func (p Consumer) subscriptionHandler(incoming *nats.Msg) {
 
 //nolint:unparam
 func (p Consumer) process(parentCtx context.Context, msg *repos.Message) error {
-	_, cancel := context.WithTimeout(parentCtx, time.Second)
+	_, cancel := context.WithTimeout(parentCtx, p.Consumer.ProcessTimeout)
 	defer cancel()
 
+	// for demo, just put random numbers to fill-in the balances
 	msg.BalanceBefore = apd.New(rand.Int63(), 2) //#nosec
 	msg.BalanceAfter = apd.New(rand.Int63(), 2)  //#nosec
 	msg.ProcessingStatus = repos.ProcessingStatusOK
@@ -184,7 +182,7 @@ func (p Consumer) process(parentCtx context.Context, msg *repos.Message) error {
 
 // replay messages to the consumer
 func (p Consumer) replay(ctx context.Context) error {
-	dbCtx, cancel := context.WithTimeout(ctx, 5*time.Second) // TODO: consumer config
+	dbCtx, cancel := context.WithTimeout(ctx, p.Consumer.MsgProcessTimeout)
 	defer cancel()
 
 	// list all currently unconfirmed messages and redeliver

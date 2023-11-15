@@ -195,7 +195,7 @@ func (p Producer) confirmMessage(parentCtx context.Context, msg repos.Message) e
 	lg = lg.With(zap.String("id", msg.ID))
 
 	// encode the message as []byte, using gob
-	msg.MessageStatus = repos.MessageStatusConfirmed
+	msg.MessageStatus = repos.MessageStatusReceived
 	msg.LastTime = time.Now().UTC()
 	payload, err := msg.Bytes()
 	if err != nil {
@@ -221,7 +221,7 @@ func (p Producer) confirmMessage(parentCtx context.Context, msg repos.Message) e
 
 // replay messages to the consumer
 func (p Producer) replay(ctx context.Context) error {
-	dbCtx, cancel := context.WithTimeout(ctx, 5*time.Second) // TODO: producer config
+	dbCtx, cancel := context.WithTimeout(ctx, p.Producer.MsgProcessTimeout)
 	defer cancel()
 
 	iterator, err := p.rt.Repos().Messages().List(dbCtx, repos.MessagePredicate{
@@ -269,7 +269,7 @@ func (p Producer) updateAndSendMessage(parentCtx context.Context, msg repos.Mess
 	}
 
 	// write and commit to DB
-	ctx, cancel := context.WithTimeout(spanCtx, 5*time.Second)
+	ctx, cancel := context.WithTimeout(spanCtx, p.Producer.MsgProcessTimeout)
 	defer cancel()
 	if err := p.rt.Repos().Messages().Update(ctx, msg); err != nil {
 		if errors.Is(err, repos.ErrAlreadyProcessed) {
