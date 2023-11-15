@@ -3,11 +3,22 @@ app:
     api:
       # http port to submit messages
       port: 9090
-  consumer: {}
+    replay:
+      wakeup: 5s
+  consumer:
+    replay:
+      batchSize: 10000
 
-nats: ~
+nats:
+  clusterId: local
 
 databases:
   postgres:
     default:
       url: postgresql://postgres@localhost:5432/messagedb?sslmode=disable
+    config:
+      log:
+        level: warn
+
+log:
+  level: info

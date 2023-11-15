@@ -7,9 +7,7 @@ import (
 	"net/url"
 	"strconv"
 
-	configkeys "github.com/fredbi/go-experiments/transactional-roundtrip/cmd/daemon/commands/config-keys"
 	"github.com/fredbi/go-experiments/transactional-roundtrip/pkg/injected"
-	natsconfigkeys "github.com/fredbi/go-experiments/transactional-roundtrip/pkg/nats/config-keys"
 	"github.com/nats-io/nats-server/v2/server"
 	"github.com/nats-io/nats.go"
 	"go.opencensus.io/plugin/ochttp/propagation/tracecontext"
@@ -33,16 +31,12 @@ func (s *Server) Start() error {
 	cfg := s.rt.Config()
 	lg := s.rt.Logger().Bg()
 
-	natsConfig := cfg.Sub(configkeys.NatsConfig)
-	if natsConfig == nil {
-		natsConfig = natsconfigkeys.DefaultNATSConfig()
+	c, err := MakeSettings(cfg)
+	if err != nil {
+		return err
 	}
 
-	natsURL := natsConfig.GetString(natsconfigkeys.URL)
-	clusterID := natsConfig.GetString(natsconfigkeys.ClusterID)
-	startupTimeout := natsConfig.GetDuration(natsconfigkeys.StartupTimeout)
-
-	u, err := url.Parse(natsURL)
+	u, err := url.Parse(c.URL)
 	if err != nil {
 		return err
 	}
@@ -62,7 +56,7 @@ func (s *Server) Start() error {
 		Host: host,
 		Port: port,
 		Cluster: server.ClusterOpts{
-			Name: clusterID,
+			Name: c.ClusterID,
 		},
 	}
 
@@ -73,8 +67,8 @@ func (s *Server) Start() error {
 
 	go ns.Start()
 
-	if !ns.ReadyForConnections(startupTimeout) {
-		return fmt.Errorf("NATS server startup timed out at %s", natsURL)
+	if !ns.ReadyForConnections(c.Server.StartupTimeout) {
+		return fmt.Errorf("NATS server startup timed out at %s", c.URL)
 	}
 
 	lg.Info("NATS server started", zap.Stringer("url", u))

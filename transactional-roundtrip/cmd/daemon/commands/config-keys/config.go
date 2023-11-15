@@ -1,9 +1,6 @@
 package keys
 
 import (
-	natsconfigkeys "github.com/fredbi/go-experiments/transactional-roundtrip/pkg/nats/config-keys"
-	producerconfigkeys "github.com/fredbi/go-experiments/transactional-roundtrip/pkg/producer/config-keys"
-	pgrepoconfigkeys "github.com/fredbi/go-experiments/transactional-roundtrip/pkg/repos/pgrepo/config-keys"
 	"github.com/spf13/viper"
 )
 
@@ -35,28 +32,17 @@ const (
 	NatsConfig = "nats"
 )
 
-// SetDefaults for CLI settings
-func SetDefaults(cfg *viper.Viper) {
-	cfg.SetDefault(DBConfig, pgrepoconfigkeys.DefaultAllDBConfig())
-	cfg.SetDefault(NatsConfig, natsconfigkeys.DefaultNATSConfig())
-	cfg.SetDefault(AppConfig, DefaultAppConfig())
+// SetDefaults for CLI settings.
+//
+// At this moment, all defaults are either defined from CLI flag bindings
+// or from the modules owners of their subsection.
+func SetDefaults(_ *viper.Viper) {
 }
 
 // DefaultConfig returns a default global configuration
 func DefaultConfig() *viper.Viper {
 	cfg := viper.New()
 	SetDefaults(cfg)
-
-	return cfg
-}
-
-// DefaultAppConfig returns a default "app" section.
-func DefaultAppConfig() *viper.Viper {
-	cfg := viper.New()
-	cfg.SetDefault(AppConfig, map[string]interface{}{
-		ConsumerConfig: producerconfigkeys.DefaultProducerConfig(),
-		ProducerConfig: map[string]interface{}{}, // TODO
-	})
 
 	return cfg
 }

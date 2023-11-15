@@ -258,7 +258,7 @@ func (r *Repo) List(ctx context.Context, p repos.MessagePredicate) (repos.Messag
 	}
 
 	q, args := query.MustSql()
-	lg.Debug("List message query", zap.String("sql", q), zap.Any("args", args))
+	lg.Debug("list message query", zap.String("sql", q), zap.Any("args", args))
 
 	rows, err := r.DB().QueryxContext(ctx, q, args...)
 	if err != nil {

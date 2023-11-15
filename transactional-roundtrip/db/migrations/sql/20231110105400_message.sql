@@ -3,8 +3,8 @@
 CREATE TABLE message(
   id varchar(16) NOT NULL PRIMARY KEY,
 
-  producer_id SMALLINT NOT NULL,
-  consumer_id SMALLINT NOT NULL,
+  producer_id text NOT NULL,
+  consumer_id text NOT NULL,
   message_status SMALLINT NOT NULL,
   processing_status SMALLINT NOT NULL,
 

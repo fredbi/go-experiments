@@ -33,15 +33,7 @@ type (
 		publishedSubject  func(string) string
 		nc                *nats.Conn
 
-		consumerSettings
-	}
-
-	consumerSettings struct {
-		// replay
-		replayBatchSize uint64
-		replayWakeUp    time.Duration
-
-		msgProcessTimeout time.Duration
+		settings
 	}
 )
 
@@ -63,7 +55,7 @@ func (p Consumer) Logger() log.Factory {
 // Until results are confirmed by the consumer, it will keep redelivering responses.
 func (p Consumer) subscriptionHandler(incoming *nats.Msg) {
 	spanCtx := natsembedded.SpanContextFromHeaders(context.Background(), incoming)
-	parentCtx, cancel := context.WithTimeout(spanCtx, p.msgProcessTimeout)
+	parentCtx, cancel := context.WithTimeout(spanCtx, p.Consumer.MsgProcessTimeout)
 	defer cancel()
 
 	ctx, span, lg := tracer.StartSpan(parentCtx, p)
@@ -198,7 +190,7 @@ func (p Consumer) replay(ctx context.Context) error {
 	// list all currently unconfirmed messages and redeliver
 	iterator, err := p.rt.Repos().Messages().List(dbCtx, repos.MessagePredicate{
 		FromConsumer: &p.ID,
-		Limit:        p.replayBatchSize,
+		Limit:        p.Consumer.Replay.BatchSize,
 		Unconfirmed:  true,
 	})
 	if err != nil {

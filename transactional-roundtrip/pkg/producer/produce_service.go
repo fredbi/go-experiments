@@ -22,28 +22,15 @@ var (
 	ErrProduceMsg = errors.New("message taken into account, but service temporily unavailable")
 )
 
-type (
-	Producer struct {
-		ID                string
-		rt                injected.Runtime
-		publishedSubject  func(string) string
-		subscribedSubject string
-		nc                *nats.Conn
+type Producer struct {
+	ID                string
+	rt                injected.Runtime
+	publishedSubject  func(string) string
+	subscribedSubject string
+	nc                *nats.Conn
 
-		producerSettings
-	}
-
-	producerSettings struct {
-		// API
-		jsonDecodeTimeout time.Duration
-
-		// replay
-		replayBatchSize uint64
-		replayWakeUp    time.Duration
-
-		msgProcessTimeout time.Duration
-	}
-)
+	settings
+}
 
 func New(rt injected.Runtime, id string) *Producer {
 	return &Producer{
@@ -60,7 +47,7 @@ func (p Producer) createAndSendMessage(parentCtx context.Context, msg repos.Mess
 	spanCtx, span, lg := tracer.StartSpan(parentCtx, p)
 	defer span.End()
 
-	ctx, cancel := context.WithTimeout(spanCtx, p.msgProcessTimeout)
+	ctx, cancel := context.WithTimeout(spanCtx, p.Producer.MsgProcessTimeout)
 	defer cancel()
 
 	lg = lg.With(zap.String("id", msg.ID))
@@ -120,7 +107,7 @@ func (p Producer) createAndSendMessage(parentCtx context.Context, msg repos.Mess
 // Until confirmations are acknowledged by the consumer, it will keep redelivering responses.
 func (p Producer) subscriptionHandler(incoming *nats.Msg) {
 	spanCtx := natsembedded.SpanContextFromHeaders(context.Background(), incoming)
-	parentCtx, cancel := context.WithTimeout(spanCtx, p.msgProcessTimeout)
+	parentCtx, cancel := context.WithTimeout(spanCtx, p.Producer.MsgProcessTimeout)
 	defer cancel()
 
 	ctx, span, lg := tracer.StartSpan(parentCtx, p)
@@ -240,7 +227,7 @@ func (p Producer) replay(ctx context.Context) error {
 	iterator, err := p.rt.Repos().Messages().List(dbCtx, repos.MessagePredicate{
 		FromProducer:     &p.ID,
 		MaxMessageStatus: repos.NewMessageStatus(repos.MessageStatusReceived),
-		Limit:            p.replayBatchSize,
+		Limit:            p.Producer.Replay.BatchSize,
 	})
 	if err != nil {
 		return err

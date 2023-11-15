@@ -58,17 +58,12 @@ func newRuntimeForCommand(c *cobra.Command) (runtime, error) {
 		resolve.WithConfigDefaulter(configkeys.DefaultConfig),
 	)
 	name := c.Name()
-	lg := log.NewFactory(zlg.Named(name))
-	rt := runtime{
-		logger: lg,
-		cfg:    cfg,
-	}
 
 	// determine the participant ID.
 	// Several instances of a server may share the same ID.
 	appConfig := cfg.Sub(configkeys.AppConfig)
 	if appConfig == nil {
-		return rt, fmt.Errorf("empty app config section. Expected a %q section", configkeys.AppConfig)
+		return runtime{}, fmt.Errorf("empty app config section. Expected a %q section", configkeys.AppConfig)
 	}
 
 	participantID := appConfig.GetString(configkeys.ParticipantID)
@@ -76,7 +71,13 @@ func newRuntimeForCommand(c *cobra.Command) (runtime, error) {
 		namer := namegenerator.NewNameGenerator(time.Now().UTC().UnixNano())
 		participantID = namer.Generate()
 	}
-	rt.id = participantID
+
+	lg := log.NewFactory(zlg.Named(name)).With(zap.String("participant_id", participantID))
+	rt := runtime{
+		id:     participantID,
+		logger: lg,
+		cfg:    cfg,
+	}
 
 	// open DB
 	r := pgrepo.NewRepository(name, lg, cfg)

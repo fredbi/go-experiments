@@ -11,8 +11,6 @@ import (
 	"github.com/fredbi/go-cli/config"
 	configkeys "github.com/fredbi/go-experiments/transactional-roundtrip/cmd/daemon/commands/config-keys"
 	"github.com/fredbi/go-experiments/transactional-roundtrip/db/migrations"
-	natsconfigkeys "github.com/fredbi/go-experiments/transactional-roundtrip/pkg/nats/config-keys"
-	producerconfigkeys "github.com/fredbi/go-experiments/transactional-roundtrip/pkg/producer/config-keys"
 	"github.com/fredbi/go-experiments/transactional-roundtrip/pkg/repos/pgrepo"
 	"github.com/fredbi/go-trace/log"
 	"github.com/spf13/cobra"
@@ -33,6 +31,7 @@ func Root() *cli.Command {
 		appName,
 		log.WithLevel("debug"),
 		log.WithRedirectStdLog(true), // redirects global standard log to this logger
+		log.WithCallerSkip(0),
 	)
 
 	// load config from file or environment variables
@@ -78,22 +77,22 @@ func Root() *cli.Command {
 		cli.WithFlag("nats-url", "",
 			"URL to the messaging cluster",
 			cli.FlagIsPersistent(),
-			cli.BindFlagToConfig(inSection(configkeys.NatsConfig, natsconfigkeys.URL)),
+			cli.BindFlagToConfig(inSection(configkeys.NatsConfig, "url")),
 		),
 		cli.WithFlag("nats-cluster-id", "",
 			"NATS cluster ID",
 			cli.FlagIsPersistent(),
-			cli.BindFlagToConfig(inSection(configkeys.NatsConfig, natsconfigkeys.ClusterID)),
+			cli.BindFlagToConfig(inSection(configkeys.NatsConfig, "clusterId")),
 		),
-		cli.WithFlag("nats-postings-topic-prefix", "postings",
+		cli.WithFlag("nats-postings-topic", "postings",
 			"NATS prefix for postings subjects",
 			cli.FlagIsPersistent(),
-			cli.BindFlagToConfig(inSection(configkeys.NatsConfig, natsconfigkeys.PostingsTopic)),
+			cli.BindFlagToConfig(inSection(configkeys.NatsConfig, "postings")),
 		),
-		cli.WithFlag("nats-results-topic-prefix", "results",
+		cli.WithFlag("nats-results-topic", "results",
 			"NATS prefix for results subjects",
 			cli.FlagIsPersistent(),
-			cli.BindFlagToConfig(inSection(configkeys.NatsConfig, natsconfigkeys.ResultsTopic)),
+			cli.BindFlagToConfig(inSection(configkeys.NatsConfig, "results")),
 		),
 		cli.WithInjectables(
 			// inject root logger
@@ -117,7 +116,7 @@ func Root() *cli.Command {
 				},
 				cli.WithFlag("port", "9090",
 					"port to serve http requests",
-					cli.BindFlagToConfig(inSection(configkeys.AppConfig, configkeys.ProducerConfig, producerconfigkeys.Port)),
+					cli.BindFlagToConfig(inSection(configkeys.AppConfig, "producer.api.port")),
 				),
 			),
 		))
@@ -149,8 +148,7 @@ func prerun(c *cobra.Command, _ []string) error {
 
 	// 3. Database
 	// Create DB if needed
-	// TODO(fredbi): find a way to collect some feedback about which DB is created
-	db, created, err := pgrepo.EnsureDB(ctx, cfg, "default")
+	db, _, err := pgrepo.EnsureDB(ctx, cfg, zlg, pgrepo.DefaultDB)
 	if err != nil {
 		return err
 	}
@@ -158,9 +156,6 @@ func prerun(c *cobra.Command, _ []string) error {
 		// scratch this pool after the migrations have completed
 		_ = db.Close()
 	}()
-	if created {
-		zlg.Info("created DB")
-	}
 
 	// 4. Apply DB migrations
 	m := migrations.New(db, zlg)

@@ -106,7 +106,7 @@ func (p Producer) publishRequest(r *http.Request) error {
 
 // decodeRequest attempts to decode an incoming JSON user input to build a Message prototype
 func (p Producer) decodeRequest(parenCtx context.Context, r *http.Request) (repos.Message, error) {
-	ctx, cancel := context.WithTimeout(parenCtx, p.jsonDecodeTimeout)
+	ctx, cancel := context.WithTimeout(parenCtx, p.Producer.API.JSONDecodeTimeout)
 	defer cancel()
 
 	var v repos.InputPayload
