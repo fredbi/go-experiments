@@ -2,11 +2,9 @@ package migrations
 
 import (
 	"embed"
-	"time"
 
+	"github.com/fredbi/go-experiments/transactional-roundtrip/pkg/injected"
 	"github.com/fredbi/gooseplus"
-	"github.com/jmoiron/sqlx"
-	"go.uber.org/zap"
 
 	// initializes pgx driver
 	_ "github.com/jackc/pgx/v5"
@@ -27,17 +25,20 @@ type Migrator struct {
 // New database migrator, using github.com/fredbi/gooseplus.
 //
 // Suited for a postgres DB, uses embedded FS to store migrations.
-func New(db *sqlx.DB, logger *zap.Logger) *Migrator {
-	// TODO: inject config
+func New(rt injected.Runtime) *Migrator {
+	cfg := rt.Config()
+	s, _ := makeSettings(cfg)
+
 	return &Migrator{
 		Migrator: gooseplus.New(
-			db.DB,
+			rt.DB().DB,
 			gooseplus.WithDialect(dbDialect),
 			gooseplus.SetEnvironments(nil), // disable env folders
 			gooseplus.WithFS(embeddedMigrations),
-			gooseplus.WithLogger(logger),
+			gooseplus.WithLogger(rt.Logger().Bg().Zap()),
 			gooseplus.WithGlobalLock(true),
-			gooseplus.WithTimeout(5*time.Minute),
+			gooseplus.WithTimeout(s.Timeout),
+			gooseplus.WithMigrationTimeout(s.MigrationTimeout),
 		),
 	}
 }

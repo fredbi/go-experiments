@@ -158,7 +158,8 @@ func prerun(c *cobra.Command, _ []string) error {
 	}()
 
 	// 4. Apply DB migrations
-	m := migrations.New(db, zlg)
+	rt := runtime{db: db, logger: log.NewFactory(zlg), cfg: cfg}
+	m := migrations.New(rt)
 
 	return m.Migrate(ctx)
 }

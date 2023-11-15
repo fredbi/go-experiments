@@ -172,12 +172,13 @@ func (p Consumer) process(parentCtx context.Context, msg *repos.Message) error {
 	_, cancel := context.WithTimeout(parentCtx, p.Consumer.ProcessTimeout)
 	defer cancel()
 
+	// TODO: some more realistic processing (e.g. build output files...)
 	// for demo, just put random numbers to fill-in the balances
 	msg.BalanceBefore = apd.New(rand.Int63(), 2) //#nosec
 	msg.BalanceAfter = apd.New(rand.Int63(), 2)  //#nosec
 	msg.ProcessingStatus = repos.ProcessingStatusOK
 
-	return nil // TODO
+	return nil
 }
 
 // replay messages to the consumer
