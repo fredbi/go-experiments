@@ -1,7 +1,6 @@
 package commands
 
 import (
-	"fmt"
 	"time"
 
 	"github.com/fredbi/go-cli/cli/cli-utils/resolve"
@@ -61,12 +60,7 @@ func newRuntimeForCommand(c *cobra.Command) (runtime, error) {
 
 	// determine the participant ID.
 	// Several instances of a server may share the same ID.
-	appConfig := cfg.Sub(configkeys.AppConfig)
-	if appConfig == nil {
-		return runtime{}, fmt.Errorf("empty app config section. Expected a %q section", configkeys.AppConfig)
-	}
-
-	participantID := appConfig.GetString(configkeys.ParticipantID)
+	participantID := cfg.GetString(inSection(configkeys.AppConfig, configkeys.ParticipantID))
 	if participantID == "" {
 		namer := namegenerator.NewNameGenerator(time.Now().UTC().UnixNano())
 		participantID = namer.Generate()

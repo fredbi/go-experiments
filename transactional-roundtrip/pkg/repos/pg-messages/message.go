@@ -179,9 +179,14 @@ func (r *Repo) UpdateConfirmed(parentCtx context.Context, id string, messageStat
 // An update is performed only if the message status is strictly increasing or if
 // the message status remains unchanged and the processing status increases.
 // Otherwise, the operation is ignored.
-func (r *Repo) Update(parentCtx context.Context, message repos.Message) error {
+func (r *Repo) Update(parentCtx context.Context, message repos.Message, opts ...repos.UpdateOption) error {
 	ctx, span, lg := tracer.StartSpan(parentCtx, r)
 	defer span.End()
+
+	o := repos.UpdateOptions{}
+	for _, apply := range opts {
+		apply(&o)
+	}
 
 	query := psql.Update("message").
 		SetMap(map[string]interface{}{
@@ -194,11 +199,14 @@ func (r *Repo) Update(parentCtx context.Context, message repos.Message) error {
 			"balance_after":     message.BalanceAfter,
 			"rejection_cause":   message.RejectionCause,
 		}).
-		Where(sq.Eq{"id": message.ID}).
-		Where(sq.Expr(
+		Where(sq.Eq{"id": message.ID})
+
+	if !o.Force {
+		query = query.Where(sq.Expr(
 			`(message_status < ?) OR (message_status = ? AND processing_status < ?)`,
 			message.MessageStatus, message.MessageStatus, message.ProcessingStatus,
 		))
+	}
 	q, args := query.MustSql()
 	lg.Debug("update message statement", zap.String("sql", q), zap.Any("args", args))
 
@@ -212,6 +220,10 @@ func (r *Repo) Update(parentCtx context.Context, message repos.Message) error {
 
 	result, err := tx.ExecContext(cancellable, q, args...)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+
+	if o.Force && err != nil {
 		return err
 	}
 

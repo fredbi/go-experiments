@@ -122,7 +122,7 @@ func (r *Repository) HealthCheck() error {
 func (r Repository) open(dcfg *pgx.ConnConfig) (*sqlx.DB, error) {
 	addr := stdlib.RegisterConnConfig(dcfg)
 	lg := r.log.Bg()
-	lg.Debug("registered driver", zap.String("driver", driverName), zap.String("config", addr), zap.String("db", dcfg.Database))
+	lg.Debug("registered driver", zap.String("driver", driverName), zap.String("driver_config", dcfg.ConnString()), zap.String("db", dcfg.Database))
 
 	s := r.databaseSettings
 	opts := s.TraceOptions(dcfg.ConnString())

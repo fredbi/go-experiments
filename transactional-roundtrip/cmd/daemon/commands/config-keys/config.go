@@ -18,7 +18,8 @@ const (
 const (
 	AppConfig = "app"
 
-	ParticipantID = "participant_id"
+	// Participant ID used to route messages
+	ParticipantID = "participantID"
 
 	// Subsection consumer
 	ConsumerConfig = "consumer"

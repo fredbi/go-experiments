@@ -81,7 +81,6 @@ func (p Producer) publishRequest(r *http.Request) error {
 
 		return err
 	}
-	lg.Debug("user_input", zap.Any("input_message", msg))
 
 	// determine a new UUID-like unique ID for this message
 	ts := time.Now().UTC()
@@ -93,6 +92,7 @@ func (p Producer) publishRequest(r *http.Request) error {
 	msg.LastTime = ts
 	msg.MessageStatus = repos.MessageStatusNacked
 	msg.ProcessingStatus = repos.ProcessingStatusPending
+	lg.Debug("enriched user input", zap.Any("input_message", msg))
 
 	if err := msg.Validate(); err != nil {
 		return err

@@ -8,6 +8,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/fredbi/go-experiments/transactional-roundtrip/pkg/injected"
 	"github.com/fredbi/go-trace/log"
 	zapadapter "github.com/jackc/pgx-zap"
 	"github.com/jackc/pgx/v5"
@@ -112,7 +113,7 @@ func makeSettings(cfg *viper.Viper, l *zap.Logger) (settings, error) {
 		return s, nil
 	}
 
-	allDBConfig := cfg.Sub("databases")
+	allDBConfig := injected.ViperSub(cfg, "databases")
 	if allDBConfig == nil {
 		l.Warn("no databases section passed in config. Using defaults")
 

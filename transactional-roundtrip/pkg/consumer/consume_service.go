@@ -8,7 +8,6 @@ import (
 	"math/rand"
 	"time"
 
-	"github.com/cockroachdb/apd/v3"
 	"github.com/fredbi/go-experiments/transactional-roundtrip/pkg/injected"
 	natsembedded "github.com/fredbi/go-experiments/transactional-roundtrip/pkg/nats"
 	"github.com/fredbi/go-experiments/transactional-roundtrip/pkg/repos"
@@ -90,7 +89,7 @@ func (p Consumer) subscriptionHandler(incoming *nats.Msg) {
 	}
 
 	// sanity check on processing status: expect only confirmations to have a decided outcome
-	if msg.MessageStatus != repos.MessageStatusConfirmed && msg.ProcessingStatus != repos.ProcessingStatusPending {
+	if msg.MessageStatus != repos.MessageStatusReceived && msg.ProcessingStatus != repos.ProcessingStatusPending {
 		lg.Error("unexpected response status",
 			zap.String("outcome", "message thrown away"),
 			zap.Stringer("message_status", msg.MessageStatus),
@@ -104,6 +103,8 @@ func (p Consumer) subscriptionHandler(incoming *nats.Msg) {
 	switch msg.MessageStatus {
 	case repos.MessageStatusNacked:
 		// ok
+		lg.Debug("nacked message received for processing", zap.Any("msg", msg))
+
 		if err := p.process(ctx, &msg); err != nil {
 			lg.Warn("message processing error",
 				zap.String("outcome", "will be retried upon redelivery"),
@@ -112,6 +113,10 @@ func (p Consumer) subscriptionHandler(incoming *nats.Msg) {
 
 			return
 		}
+
+		// update the status of the message: now we can reply with a decided outcome
+		msg.MessageStatus = repos.MessageStatusPosted
+		msg.LastTime = time.Now().UTC()
 
 		// encode the message as []byte, using gob
 		payload, err := msg.Bytes()
@@ -125,9 +130,7 @@ func (p Consumer) subscriptionHandler(incoming *nats.Msg) {
 		}
 
 		// send result
-		post := nats.NewMsg(p.publishedSubject(msg.ConsumerID))
-		msg.MessageStatus = repos.MessageStatusPosted
-		msg.LastTime = time.Now().UTC()
+		post := nats.NewMsg(p.publishedSubject(msg.ProducerID))
 		post.Data = payload
 		post.Reply = p.subscribedSubject
 		post.Header.Add("trace_id", span.SpanContext().TraceID.String())
@@ -140,8 +143,12 @@ func (p Consumer) subscriptionHandler(incoming *nats.Msg) {
 			)
 		}
 
+		lg.Debug("result sent back to producer", zap.String("producer_id", msg.ProducerID), zap.Any("raw_msg", post))
+
 	case repos.MessageStatusReceived:
 		// ok. confirmation from producer: update private status
+		lg.Debug("confirmation received from producer", zap.String("producer_id", msg.ProducerID), zap.Any("msg", msg))
+
 		if err := p.rt.Repos().Messages().UpdateConfirmed(ctx, msg.ID, repos.MessageStatusConfirmed); err != nil {
 			if errors.Is(err, repos.ErrAlreadyProcessed) {
 				lg.Warn("duplicate message entry detected",
@@ -174,8 +181,8 @@ func (p Consumer) process(parentCtx context.Context, msg *repos.Message) error {
 
 	// TODO: some more realistic processing (e.g. build output files...)
 	// for demo, just put random numbers to fill-in the balances
-	msg.BalanceBefore = apd.New(rand.Int63(), 2) //#nosec
-	msg.BalanceAfter = apd.New(rand.Int63(), 2)  //#nosec
+	msg.BalanceBefore = repos.NewDecimal(rand.Int63n(1_000_000_000), 2) //#nosec
+	msg.BalanceAfter = repos.NewDecimal(rand.Int63n(1_000_000_000), 2)  //#nosec
 	msg.ProcessingStatus = repos.ProcessingStatusOK
 
 	return nil

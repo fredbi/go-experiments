@@ -1,7 +1,7 @@
 -- +goose Up
 -- +goose StatementBegin
 CREATE TABLE message(
-  id varchar(16) NOT NULL PRIMARY KEY,
+  id varchar(27) NOT NULL PRIMARY KEY,
 
   producer_id text NOT NULL,
   consumer_id text NOT NULL,

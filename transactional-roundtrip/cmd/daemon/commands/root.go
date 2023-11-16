@@ -35,7 +35,10 @@ func Root() *cli.Command {
 	)
 
 	// load config from file or environment variables
-	cfg, err := config.LoadWithSecrets(env,
+	//
+	// NOTE: in this demo, the deployment context "env" is not used.
+	// This demo doesn't use merged secrets. Apply LoadWithSecrets to merge extra secret config.
+	cfg, err := config.Load(env,
 		config.WithSearchParentDir(true),
 		config.WithMute(!dumpConfig()),
 		config.WithOutput(stdlog.Writer()),
@@ -69,30 +72,40 @@ func Root() *cli.Command {
 			cli.FlagIsPersistent(),
 			cli.BindFlagToConfig(configkeys.LogLevel),
 		),
-		cli.WithFlag("participant_id", "",
+		cli.WithFlag("participant-id", "",
 			"identifies the logical routing ID of this daemon to the messaging cluster. A random name is chosen by default",
 			cli.FlagIsPersistent(),
 			cli.BindFlagToConfig(inSection(configkeys.AppConfig, configkeys.ParticipantID)),
 		),
 		cli.WithFlag("nats-url", "",
-			"URL to the messaging cluster",
+			"URL to the messaging cluster. NATS defaults is to listen on localhost:4222",
 			cli.FlagIsPersistent(),
 			cli.BindFlagToConfig(inSection(configkeys.NatsConfig, "url")),
 		),
-		cli.WithFlag("nats-cluster-id", "",
+		cli.WithFlag("nats-cluster-id", "messaging",
 			"NATS cluster ID",
 			cli.FlagIsPersistent(),
-			cli.BindFlagToConfig(inSection(configkeys.NatsConfig, "clusterId")),
+			cli.BindFlagToConfig(inSection(configkeys.NatsConfig, "server", "clusterId")),
+		),
+		cli.WithFlag("nats-cluster-url", "nats://localhost:5333",
+			"NATS cluster advertised discovery URL",
+			cli.FlagIsPersistent(),
+			cli.BindFlagToConfig(inSection(configkeys.NatsConfig, "server", "clusterURL")),
+		),
+		cli.WithFlag("nats-cluster-routes", "",
+			"NATS cluster discovery routes to other nodes, as a comma separated list of URLs",
+			cli.FlagIsPersistent(),
+			cli.BindFlagToConfig(inSection(configkeys.NatsConfig, "server", "clusterRoutes")),
 		),
 		cli.WithFlag("nats-postings-topic", "postings",
-			"NATS prefix for postings subjects",
+			"NATS prefix for postings subjects (producers post there, consumers listen to that)",
 			cli.FlagIsPersistent(),
-			cli.BindFlagToConfig(inSection(configkeys.NatsConfig, "postings")),
+			cli.BindFlagToConfig(inSection(configkeys.NatsConfig, "topics", "postings")),
 		),
 		cli.WithFlag("nats-results-topic", "results",
-			"NATS prefix for results subjects",
+			"NATS prefix for results subjects (consumers post there, producers listen to that",
 			cli.FlagIsPersistent(),
-			cli.BindFlagToConfig(inSection(configkeys.NatsConfig, "results")),
+			cli.BindFlagToConfig(inSection(configkeys.NatsConfig, "topics", "results")),
 		),
 		cli.WithInjectables(
 			// inject root logger
@@ -106,6 +119,10 @@ func Root() *cli.Command {
 					Short: "a message consumer client",
 					RunE:  consumerCommand,
 				},
+				cli.WithFlag("no-consumer-replay", false,
+					"disable background message redeliveries by consumer",
+					cli.BindFlagToConfig(inSection(configkeys.AppConfig, "consumer", "noreplay")),
+				),
 			),
 			// producer sub-command
 			cli.NewCommand(
@@ -114,9 +131,13 @@ func Root() *cli.Command {
 					Short: "a message producer client",
 					RunE:  producerCommand,
 				},
-				cli.WithFlag("port", "9090",
+				cli.WithFlag("port", 9090,
 					"port to serve http requests",
 					cli.BindFlagToConfig(inSection(configkeys.AppConfig, "producer.api.port")),
+				),
+				cli.WithFlag("no-producer-replay", false,
+					"disable background message redeliveries by producer",
+					cli.BindFlagToConfig(inSection(configkeys.AppConfig, "producer", "noreplay")),
 				),
 			),
 		))
@@ -132,7 +153,7 @@ func prerun(c *cobra.Command, _ []string) error {
 	)
 
 	// 1. Config
-	// Debug config if requested
+	// Debug by config if requested from env
 	if dumpConfig() {
 		stdlog.Println(cfg.AllSettings())
 	}
@@ -148,6 +169,7 @@ func prerun(c *cobra.Command, _ []string) error {
 
 	// 3. Database
 	// Create DB if needed
+	// NOTE: this is transactional, so only the first started deployment will get there.
 	db, _, err := pgrepo.EnsureDB(ctx, cfg, zlg, pgrepo.DefaultDB)
 	if err != nil {
 		return err

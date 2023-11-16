@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"time"
 
 	logmiddleware "github.com/fredbi/go-trace/log/middleware"
@@ -18,41 +19,60 @@ import (
 )
 
 func (p *Producer) Start() error {
-	settings, err := p.makeConfig()
+	s, err := p.makeConfig()
 	if err != nil {
 		return err
 	}
 
-	p.settings = settings
-	cancellable, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	p.settings = s
+	grp, ctx := errgroup.WithContext(context.Background())
+	latch := make(chan struct{})
+	lg := p.rt.Logger().Bg().With(zap.String("operation", "start_consumer"))
 
-	cleanNats, err := p.startNatsClient(cancellable)
-	if err != nil {
-		cancel()
+	grp.Go(func() error {
+		cleanNats, err := p.startNatsClient(ctx)
+		if err != nil {
+			return err
+		}
 
-		return err
+		defer cleanNats()
+
+		close(latch)
+		<-ctx.Done()
+
+		return ctx.Err()
+	})
+
+	if !p.Producer.NoReplay {
+		<-latch
+		grp.Go(p.startReplayer(ctx))
+	} else {
+		lg.Info("replayer is disabled")
 	}
-	defer cleanNats()
 
-	cleanReplayer, err := p.startReplayer(cancellable)
-	if err != nil {
-		cancel()
+	grp.Go(func() error {
+		<-latch
+		return p.startHTTPHandler(ctx)
+	})
 
-		return err
+	return grp.Wait()
+}
+
+func (p *Producer) Stop() error {
+	if p.nc == nil {
+		return nil
 	}
-	defer cleanReplayer()
 
-	return p.startHTTPHandler(cancellable)
+	return p.nc.Drain()
 }
 
 func (p *Producer) startNatsClient(_ context.Context) (func(), error) {
-	lg := p.rt.Logger().Bg().With(zap.String("operation", "start"))
+	lg := p.rt.Logger().Bg().With(zap.String("operation", "start_nats_client"))
 
 	p.publishedSubject = func(recipientID string) string {
-		return fmt.Sprintf("%s.%s", p.Nats.Postings, recipientID)
+		return fmt.Sprintf("%s.%s", p.Nats.Topics.Postings, recipientID)
 	}
-	p.subscribedSubject = fmt.Sprintf("%s.%s", p.Nats.Results, p.ID)
+	p.subscribedSubject = fmt.Sprintf("%s.%s", p.Nats.Topics.Results, p.ID)
 
 	// connect to the NATS cluster
 	nc, err := nats.Connect(p.Nats.URL,
@@ -77,31 +97,21 @@ func (p *Producer) startNatsClient(_ context.Context) (func(), error) {
 
 	lg.Info("producer connected to NATS cluster",
 		zap.String("producer_id", p.ID),
-		zap.String("url", p.Nats.URL),
-		zap.String("cluster_id", p.Nats.ClusterID),
+		zap.String("nats_url", p.Nats.URL),
+		zap.String("subscribed_to_subject", p.subscribedSubject),
+		zap.String("publish_to_subjects", p.publishedSubject("*")),
 	)
 
 	return clean, nil
 }
 
-//nolint:unparam
-func (p *Producer) startReplayer(ctx context.Context) (func(), error) {
-	// replays unacked and messages in the background
-	lg := p.rt.Logger().Bg()
+// startReplayer starts a background replayer of un-acked messages
+func (p Producer) startReplayer(ctx context.Context) func() error {
+	lg := p.Logger().For(ctx).With(zap.String("operation", "replayer"))
 	lg.Info("replay configuration",
 		zap.Duration("replay_wakeup", p.Producer.Replay.WakeUp),
 		zap.Uint64("replay_batch_size", p.Producer.Replay.BatchSize),
 	)
-
-	group, groupCtx := errgroup.WithContext(ctx)
-	group.Go(p.replayer(groupCtx))
-
-	return func() { _ = group.Wait() }, nil
-}
-
-// replayer starts a background replayer of un-acked messages
-func (p Producer) replayer(ctx context.Context) func() error {
-	lg := p.Logger().For(ctx).With(zap.String("operation", "http-handler"))
 
 	return func() error {
 		ticker := time.NewTicker(p.Producer.Replay.WakeUp)
@@ -148,16 +158,8 @@ func (p *Producer) startHTTPHandler(ctx context.Context) error {
 		r.Get("/messages", p.listMessages)
 	})
 
-	addr := ":" + p.Producer.API.Port
+	addr := ":" + strconv.Itoa(p.Producer.API.Port)
 	lg.Info("listening on", zap.String("endpoint", addr))
 
 	return http.ListenAndServe(addr, router) //#nosec
-}
-
-func (p *Producer) Stop() error {
-	if p.nc == nil {
-		return nil
-	}
-
-	return p.nc.Drain()
 }

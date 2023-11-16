@@ -20,7 +20,7 @@ type (
 		Create(context.Context, Message) error
 
 		// Update a Message in the DB.
-		Update(context.Context, Message) error
+		Update(context.Context, Message, ...UpdateOption) error
 
 		// Get retrieves a Message by its unique ID
 		Get(context.Context, string) (Message, error)

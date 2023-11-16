@@ -19,34 +19,48 @@ func (p *Consumer) Start() error {
 	}
 
 	p.settings = s
-	cancellable, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	grp, ctx := errgroup.WithContext(context.Background())
+	latch := make(chan struct{})
+	lg := p.rt.Logger().Bg().With(zap.String("operation", "start_consumer"))
 
-	cleanNats, err := p.startNatsClient(cancellable)
-	if err != nil {
-		cancel()
+	grp.Go(func() error {
+		cleanNats, err := p.startNatsClient(ctx)
+		if err != nil {
+			return err
+		}
+		defer cleanNats()
 
-		return err
+		close(latch)
+		<-ctx.Done()
+
+		return ctx.Err()
+	})
+
+	if !p.Consumer.NoReplay {
+		<-latch
+		grp.Go(p.startReplayer(ctx))
+	} else {
+		lg.Info("replayer is disabled")
 	}
-	defer cleanNats()
 
-	waitReplayer, err := p.startReplayer(cancellable)
-	if err != nil {
-		cancel()
+	return grp.Wait()
+}
 
-		return err
+func (p *Consumer) Stop() error {
+	if p.nc == nil {
+		return nil
 	}
 
-	return waitReplayer()
+	return p.nc.Drain()
 }
 
 func (p *Consumer) startNatsClient(_ context.Context) (func(), error) {
 	lg := p.rt.Logger().Bg().With(zap.String("operation", "start_nats_client"))
 
 	p.publishedSubject = func(recipientID string) string {
-		return fmt.Sprintf("%s.%s", p.Nats.Results, recipientID)
+		return fmt.Sprintf("%s.%s", p.Nats.Topics.Results, recipientID)
 	}
-	p.subscribedSubject = fmt.Sprintf("%s.%s", p.Nats.Postings, p.ID)
+	p.subscribedSubject = fmt.Sprintf("%s.%s", p.Nats.Topics.Postings, p.ID)
 
 	// connect to the NATS cluster
 	nc, err := nats.Connect(p.Nats.URL,
@@ -69,33 +83,23 @@ func (p *Consumer) startNatsClient(_ context.Context) (func(), error) {
 		_ = subscription.Unsubscribe()
 	}
 
-	lg.Info("consumer connected to NATS cluster",
+	lg.Info("consumer connected to NATS cluster as a NATS client",
 		zap.String("consumer_id", p.ID),
-		zap.String("url", p.Nats.URL),
-		zap.String("cluster_id", p.Nats.ClusterID),
+		zap.String("nats_url", p.Nats.URL),
+		zap.String("subscribed_to_subject", p.subscribedSubject),
+		zap.String("publish_to_subjects", p.publishedSubject("*")),
 	)
 
 	return clean, nil
 }
 
-//nolint:unparam
-func (p *Consumer) startReplayer(ctx context.Context) (func() error, error) {
-	// replays unacked and messages in the background
-	lg := p.rt.Logger().Bg().With(zap.String("operation", "start_replayer"))
-
+// replayer starts a background replayer of un-acked messages
+func (p Consumer) startReplayer(ctx context.Context) func() error {
+	lg := p.Logger().For(ctx).With(zap.String("operation", "consumer_replayer"))
 	lg.Info("replay configuration",
 		zap.Duration("replay_wakeup", p.Consumer.Replay.WakeUp),
 		zap.Uint64("replay_batch_size", p.Consumer.Replay.BatchSize),
 	)
-	group, groupCtx := errgroup.WithContext(ctx)
-	group.Go(p.replayer(groupCtx))
-
-	return func() error { return group.Wait() }, nil
-}
-
-// replayer starts a background replayer of un-acked messages
-func (p Consumer) replayer(ctx context.Context) func() error {
-	lg := p.Logger().For(ctx).With(zap.String("operation", "http-handler"))
 
 	return func() error {
 		ticker := time.NewTicker(p.Consumer.Replay.WakeUp)
@@ -121,18 +125,10 @@ func (p Consumer) replayer(ctx context.Context) func() error {
 					break
 				}
 
-				lg.Info("nothing to replay")
+				lg.Debug("nothing to replay")
 
 				break
 			}
 		}
 	}
-}
-
-func (p *Consumer) Stop() error {
-	if p.nc == nil {
-		return nil
-	}
-
-	return p.nc.Drain()
 }

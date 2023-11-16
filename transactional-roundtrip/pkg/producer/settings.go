@@ -3,7 +3,7 @@ package producer
 import (
 	"time"
 
-	configkeys "github.com/fredbi/go-experiments/transactional-roundtrip/cmd/daemon/commands/config-keys"
+	"github.com/fredbi/go-experiments/transactional-roundtrip/pkg/injected"
 	natsembedded "github.com/fredbi/go-experiments/transactional-roundtrip/pkg/nats"
 )
 
@@ -15,7 +15,7 @@ var defaultSettings = settings{
 			WakeUp:    30 * time.Second,
 		},
 		API: apiSettings{
-			Port: "9990",
+			Port: 9990,
 		},
 		MsgProcessTimeout: 5 * time.Second,
 	},
@@ -31,6 +31,7 @@ type (
 		Replay            replaySettings
 		API               apiSettings
 		MsgProcessTimeout time.Duration
+		NoReplay          bool
 	}
 
 	replaySettings struct {
@@ -39,7 +40,7 @@ type (
 	}
 
 	apiSettings struct {
-		Port              string
+		Port              int
 		JSONDecodeTimeout time.Duration
 	}
 )
@@ -55,7 +56,7 @@ func (p Producer) makeConfig() (settings, error) {
 	}
 	s.Nats = natsSettings
 
-	appConfig := cfg.Sub(configkeys.AppConfig)
+	appConfig := injected.ViperSub(cfg, "app")
 	if appConfig == nil {
 		return s, nil
 	}

@@ -12,4 +12,5 @@ type Runtime interface {
 	DB() *sqlx.DB
 	Config() *viper.Viper
 	Repos() repos.Iface
+	ID() string
 }

@@ -10,7 +10,9 @@ app:
       batchSize: 10000
 
 nats:
-  clusterId: local
+  server:
+    clusterId: local
+  topics: ~
 
 databases:
   postgres:

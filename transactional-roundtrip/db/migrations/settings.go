@@ -3,6 +3,7 @@ package migrations
 import (
 	"time"
 
+	"github.com/fredbi/go-experiments/transactional-roundtrip/pkg/injected"
 	"github.com/spf13/viper"
 )
 
@@ -19,7 +20,7 @@ type settings struct {
 func makeSettings(cfg *viper.Viper) (settings, error) {
 	s := defaultSettings
 
-	migrationsCfg := cfg.Sub("migrations")
+	migrationsCfg := injected.ViperSub(cfg, "migrations")
 	if migrationsCfg == nil {
 		return s, nil
 	}

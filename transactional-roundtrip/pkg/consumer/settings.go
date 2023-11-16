@@ -3,7 +3,7 @@ package consumer
 import (
 	"time"
 
-	configkeys "github.com/fredbi/go-experiments/transactional-roundtrip/cmd/daemon/commands/config-keys"
+	"github.com/fredbi/go-experiments/transactional-roundtrip/pkg/injected"
 	natsembedded "github.com/fredbi/go-experiments/transactional-roundtrip/pkg/nats"
 )
 
@@ -28,6 +28,7 @@ type consumerSettings struct {
 	Replay            replaySettings
 	MsgProcessTimeout time.Duration
 	ProcessTimeout    time.Duration
+	NoReplay          bool
 }
 
 type replaySettings struct {
@@ -47,7 +48,7 @@ func (p Consumer) makeConfig() (settings, error) {
 	}
 	s.Nats = natsSettings
 
-	appConfig := cfg.Sub(configkeys.AppConfig)
+	appConfig := injected.ViperSub(cfg, "app")
 	if appConfig == nil {
 		return s, nil
 	}

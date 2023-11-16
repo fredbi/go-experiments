@@ -28,10 +28,9 @@ func New(rt injected.Runtime) *Server {
 
 // Start an embedded NATS server in the background.
 func (s *Server) Start() error {
-	cfg := s.rt.Config()
 	lg := s.rt.Logger().Bg()
 
-	c, err := MakeSettings(cfg)
+	c, err := MakeSettings(s.rt.Config())
 	if err != nil {
 		return err
 	}
@@ -53,17 +52,62 @@ func (s *Server) Start() error {
 
 	// TODO: investigate the impact of various options
 	natsOptions := &server.Options{
-		Host: host,
-		Port: port,
-		Cluster: server.ClusterOpts{
-			Name: c.ClusterID,
-		},
+		ServerName: fmt.Sprintf("embedded-%s", s.rt.ID()),
+		Host:       host,
+		Port:       port,
+		Debug:      true,
+	}
+
+	if c.Server.ClusterID != "" {
+		clusterURL, e := url.Parse(c.Server.ClusterURL)
+		if e != nil {
+			return e
+		}
+
+		clusterHost, clusterPortStr, e := net.SplitHostPort(clusterURL.Host)
+		if e != nil {
+			return e
+		}
+
+		clusterPort, e := strconv.Atoi(clusterPortStr)
+		if e != nil {
+			return e
+		}
+
+		natsOptions.Cluster = server.ClusterOpts{
+			Name:           c.Server.ClusterID,
+			Port:           clusterPort,
+			Host:           clusterHost,
+			ListenStr:      c.Server.ClusterURL,
+			ConnectRetries: 100,
+		}
+
+		if clusterURL.User != nil {
+			natsOptions.Cluster.Username = clusterURL.User.Username()
+			if passwd, hasPassword := clusterURL.User.Password(); hasPassword {
+				natsOptions.Cluster.Password = passwd
+			}
+		}
+
+		natsOptions.RoutesStr = c.Server.ClusterRoutes
+		routeURLs := server.RoutesFromStr(c.Server.ClusterRoutes)
+		if routeURLs == nil {
+			return fmt.Errorf("invalid cluster routes: %q", c.Server.ClusterRoutes)
+		}
+		natsOptions.Routes = routeURLs
+
+		lg.Info("NATS clustering enabled",
+			zap.String("cluster_id", natsOptions.Cluster.Name),
+			zap.String("cluster_url", natsOptions.Cluster.ListenStr),
+			zap.Stringers("cluster_routes", natsOptions.Routes),
+		)
 	}
 
 	ns, err := server.NewServer(natsOptions)
 	if err != nil {
 		return err
 	}
+	ns.ConfigureLogger()
 
 	go ns.Start()
 
@@ -71,13 +115,17 @@ func (s *Server) Start() error {
 		return fmt.Errorf("NATS server startup timed out at %s", c.URL)
 	}
 
-	lg.Info("NATS server started", zap.Stringer("url", u))
+	lg.Info("NATS server started",
+		zap.Stringer("url", u),
+	)
 
 	return nil
 }
 
 func (s *Server) Stop() error {
-	s.ns.WaitForShutdown()
+	if s.ns != nil {
+		s.ns.WaitForShutdown()
+	}
 
 	return nil
 }

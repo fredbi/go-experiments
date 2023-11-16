@@ -3,20 +3,25 @@ package nats
 import (
 	"time"
 
+	"github.com/fredbi/go-experiments/transactional-roundtrip/pkg/injected"
 	"github.com/nats-io/nats.go"
 	"github.com/spf13/viper"
 )
 
 // DefaultSettings define defaults for the embedded NATS server and clients.
 var DefaultSettings = Settings{
-	URL:       nats.DefaultURL,
-	ClusterID: "messaging",
-	Postings:  "postings",
-	Results:   "results",
+	URL: nats.DefaultURL, // e.g. nats://127.0.0.1:4222
+	Topics: TopicsSettings{
+		Postings: "postings",
+		Results:  "results",
+	},
 	Server: ServerSettings{
 		MaxReconnect:   nats.DefaultOptions.MaxReconnect,
 		ReconnectWait:  nats.DefaultOptions.ReconnectWait,
 		StartupTimeout: 3 * time.Second,
+		ClusterID:      "messaging",
+		ClusterURL:     "nats://localhost:5333",
+		ClusterRoutes:  "",
 	},
 }
 
@@ -25,29 +30,38 @@ type (
 	//
 	// Primarily intended for being unmarshaled from a viper config.
 	Settings struct {
-		URL       string
-		ClusterID string
-		Postings  string
-		Results   string
-		Server    ServerSettings
+		URL    string
+		Topics TopicsSettings
+		Server ServerSettings
+	}
+
+	TopicsSettings struct {
+		Postings string
+		Results  string
 	}
 
 	ServerSettings struct {
 		StartupTimeout time.Duration
 		ReconnectWait  time.Duration
 		MaxReconnect   int
+		ClusterID      string
+		ClusterURL     string
+		ClusterRoutes  string
 	}
 )
 
 func MakeSettings(cfg *viper.Viper) (Settings, error) {
 	s := DefaultSettings
-
-	natsConfig := cfg.Sub("nats")
-	if natsConfig == nil {
+	if cfg == nil {
 		return s, nil
 	}
 
-	if err := natsConfig.Unmarshal(&s); err != nil {
+	cfg = injected.ViperSub(cfg, "nats")
+	if cfg == nil {
+		return s, nil
+	}
+
+	if err := cfg.Unmarshal(&s); err != nil {
 		return s, err
 	}
 

@@ -83,6 +83,8 @@ func (p Producer) createAndSendMessage(parentCtx context.Context, msg repos.Mess
 		)
 	}
 
+	lg.Debug("message created by producer")
+
 	// send message with subject "postings.{ConsumerID}" and reply-to
 	post := nats.NewMsg(p.publishedSubject(msg.ConsumerID))
 	post.Data = payload
@@ -90,12 +92,16 @@ func (p Producer) createAndSendMessage(parentCtx context.Context, msg repos.Mess
 	post.Header.Add("trace_id", span.SpanContext().TraceID.String())
 	post.Header.Add("span_id", span.SpanContext().SpanID.String())
 
+	// In this mode, NATS operates as fire-and-forget: there is no ACK.
+	// Errors come only from surface checks on the message.
 	if err := p.nc.PublishMsg(post); err != nil {
 		lg.Warn("could not publish",
 			zap.String("outcome", "will be resubmitted later"),
 			zap.Error(err),
 		)
 	}
+
+	lg.Debug("message posted to consumer", zap.String("consumer_id", msg.ConsumerID), zap.Any("raw_msg", post))
 
 	return nil
 }
@@ -133,7 +139,7 @@ func (p Producer) subscriptionHandler(incoming *nats.Msg) {
 	lg = lg.With(zap.String("id", msg.ID))
 
 	// sanity check on message status protocol
-	if msg.MessageStatus != repos.MessageStatusReceived {
+	if msg.MessageStatus != repos.MessageStatusPosted {
 		lg.Error("unexpected response status",
 			zap.String("outcome", "message thrown away"),
 			zap.Stringer("message_status", msg.MessageStatus),
@@ -220,11 +226,16 @@ func (p Producer) confirmMessage(parentCtx context.Context, msg repos.Message) e
 }
 
 // replay messages to the consumer
-func (p Producer) replay(ctx context.Context) error {
-	dbCtx, cancel := context.WithTimeout(ctx, p.Producer.MsgProcessTimeout)
+func (p Producer) replay(parentCtx context.Context) error {
+	spanCtx, span, lg := tracer.StartSpan(parentCtx, p)
+	defer span.End()
+
+	ctx, cancel := context.WithTimeout(spanCtx, p.Producer.MsgProcessTimeout)
 	defer cancel()
 
-	iterator, err := p.rt.Repos().Messages().List(dbCtx, repos.MessagePredicate{
+	lg.Debug("looking for messages to be redelivered")
+
+	iterator, err := p.rt.Repos().Messages().List(ctx, repos.MessagePredicate{
 		FromProducer:     &p.ID,
 		MaxMessageStatus: repos.NewMessageStatus(repos.MessageStatusReceived),
 		Limit:            p.Producer.Replay.BatchSize,
@@ -242,11 +253,13 @@ func (p Producer) replay(ctx context.Context) error {
 			return err
 		}
 
+		lg.Debug("found message to be redelivered", zap.Any("msg", msg))
+
 		// republish message
 		msg.ProducerReplays++
 		msg.LastTime = time.Now().UTC()
 
-		if err = p.updateAndSendMessage(dbCtx, msg); err != nil {
+		if err = p.updateAndSendMessage(ctx, msg); err != nil {
 			return err
 		}
 	}
@@ -271,23 +284,16 @@ func (p Producer) updateAndSendMessage(parentCtx context.Context, msg repos.Mess
 	// write and commit to DB
 	ctx, cancel := context.WithTimeout(spanCtx, p.Producer.MsgProcessTimeout)
 	defer cancel()
-	if err := p.rt.Repos().Messages().Update(ctx, msg); err != nil {
-		if errors.Is(err, repos.ErrAlreadyProcessed) {
-			lg.Warn("duplicate update entry detected",
-				zap.String("outcome", "no update, no need to redeliver"),
-				zap.Error(err),
-			)
-
-			return err
-		}
-
-		lg.Warn("could not write in DB, not accepted in the system", zap.Error(err))
+	// force the update: no status is changed, just the replay counter
+	if err := p.rt.Repos().Messages().Update(ctx, msg, repos.WithForceUpdate(true)); err != nil {
+		lg.Warn("could not write replay counts in DB", zap.Error(err))
 
 		return errors.Join(
 			ErrProduceDB,
 			err,
 		)
 	}
+	lg.Debug("replay count updated")
 
 	// send message with subject "postings.{ConsumerID}" and reply-to
 	post := nats.NewMsg(p.publishedSubject(msg.ConsumerID))
@@ -301,6 +307,8 @@ func (p Producer) updateAndSendMessage(parentCtx context.Context, msg repos.Mess
 			zap.Error(err),
 		)
 	}
+
+	lg.Debug("message redelivered", zap.String("consumer_id", msg.ConsumerID))
 
 	return nil
 }
