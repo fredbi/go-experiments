@@ -16,12 +16,13 @@ var DefaultSettings = Settings{
 		Results:  "results",
 	},
 	Server: ServerSettings{
-		MaxReconnect:   nats.DefaultOptions.MaxReconnect,
-		ReconnectWait:  nats.DefaultOptions.ReconnectWait,
-		StartupTimeout: 3 * time.Second,
-		ClusterID:      "messaging",
-		ClusterURL:     "nats://localhost:5333",
-		ClusterRoutes:  "",
+		MaxReconnect:           nats.DefaultOptions.MaxReconnect,
+		ReconnectWait:          nats.DefaultOptions.ReconnectWait,
+		StartupTimeout:         3 * time.Second,
+		ClusterID:              "messaging",
+		ClusterURL:             "nats://localhost:5333",
+		ClusterRoutes:          "",
+		ClusterHeadlessService: "",
 	},
 }
 
@@ -41,12 +42,13 @@ type (
 	}
 
 	ServerSettings struct {
-		StartupTimeout time.Duration
-		ReconnectWait  time.Duration
-		MaxReconnect   int
-		ClusterID      string
-		ClusterURL     string
-		ClusterRoutes  string
+		StartupTimeout         time.Duration
+		ReconnectWait          time.Duration
+		MaxReconnect           int
+		ClusterID              string
+		ClusterURL             string
+		ClusterRoutes          string
+		ClusterHeadlessService string
 	}
 )
 

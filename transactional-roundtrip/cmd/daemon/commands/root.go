@@ -52,11 +52,10 @@ func Root() *cli.Command {
 
 	return cli.NewCommand(
 		&cobra.Command{
-			Use:               "daemon",
-			Short:             "a message processing client",
-			Run:               func(_ *cobra.Command, _ []string) {},
-			SilenceUsage:      true,
-			PersistentPreRunE: prerun,
+			Use:          "daemon",
+			Short:        "a message processing client",
+			Run:          func(_ *cobra.Command, _ []string) {},
+			SilenceUsage: true,
 			PersistentPostRun: func(_ *cobra.Command, _ []string) {
 				// sync the logger output
 				closer()
@@ -97,6 +96,11 @@ func Root() *cli.Command {
 			cli.FlagIsPersistent(),
 			cli.BindFlagToConfig(inSection(configkeys.NatsConfig, "server", "clusterRoutes")),
 		),
+		cli.WithFlag("nats-cluster-headless-service", "",
+			"NATS cluster discovery resolved from DNS lookup on a kubernetes headless service (overriden by any value set with nats-cluster-routes",
+			cli.FlagIsPersistent(),
+			cli.BindFlagToConfig(inSection(configkeys.NatsConfig, "server", "clusterHeadlessService")),
+		),
 		cli.WithFlag("nats-postings-topic", "postings",
 			"NATS prefix for postings subjects (producers post there, consumers listen to that)",
 			cli.FlagIsPersistent(),
@@ -115,9 +119,10 @@ func Root() *cli.Command {
 			// consumer sub-command
 			cli.NewCommand(
 				&cobra.Command{
-					Use:   "consumer",
-					Short: "a message consumer client",
-					RunE:  consumerCommand,
+					Use:               "consumer",
+					Short:             "a message consumer client",
+					PersistentPreRunE: prerun,
+					RunE:              consumerCommand,
 				},
 				cli.WithFlag("no-consumer-replay", false,
 					"disable background message redeliveries by consumer",
@@ -127,9 +132,10 @@ func Root() *cli.Command {
 			// producer sub-command
 			cli.NewCommand(
 				&cobra.Command{
-					Use:   "producer",
-					Short: "a message producer client",
-					RunE:  producerCommand,
+					Use:               "producer",
+					Short:             "a message producer client",
+					PersistentPreRunE: prerun,
+					RunE:              producerCommand,
 				},
 				cli.WithFlag("port", 9090,
 					"port to serve http requests",
@@ -139,6 +145,13 @@ func Root() *cli.Command {
 					"disable background message redeliveries by producer",
 					cli.BindFlagToConfig(inSection(configkeys.AppConfig, "producer", "noreplay")),
 				),
+			),
+			cli.NewCommand(
+				&cobra.Command{
+					Use:   "help-config",
+					Short: "generates the default config as a YAML configuration file",
+					RunE:  nil, // TODO: use settings.Defaults() to marshal a YAML config file
+				},
 			),
 		))
 }

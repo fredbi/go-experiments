@@ -2,10 +2,12 @@ package nats
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/url"
 	"strconv"
+	"time"
 
 	"github.com/fredbi/go-experiments/transactional-roundtrip/pkg/injected"
 	"github.com/nats-io/nats-server/v2/server"
@@ -18,6 +20,8 @@ import (
 type Server struct {
 	rt injected.Runtime
 	ns *server.Server
+
+	Settings
 }
 
 func New(rt injected.Runtime) *Server {
@@ -35,6 +39,7 @@ func (s *Server) Start() error {
 		return err
 	}
 
+	s.Settings = c
 	u, err := url.Parse(c.URL)
 	if err != nil {
 		return err
@@ -89,12 +94,26 @@ func (s *Server) Start() error {
 			}
 		}
 
-		natsOptions.RoutesStr = c.Server.ClusterRoutes
-		routeURLs := server.RoutesFromStr(c.Server.ClusterRoutes)
-		if routeURLs == nil {
-			return fmt.Errorf("invalid cluster routes: %q", c.Server.ClusterRoutes)
+		switch {
+		case c.Server.ClusterRoutes != "":
+			natsOptions.RoutesStr = c.Server.ClusterRoutes
+			routeURLs := server.RoutesFromStr(c.Server.ClusterRoutes)
+			if routeURLs == nil {
+				return fmt.Errorf("invalid cluster routes: %q", c.Server.ClusterRoutes)
+			}
+			natsOptions.Routes = routeURLs
+
+		case c.Server.ClusterHeadlessService != "":
+			// we assume that when running from a headless service, all advertised cluster endpoints run on the same port
+			natsOptions.Routes, err = s.discoverIPs(c.Server.ClusterHeadlessService, natsOptions.Cluster.Port, clusterURL.User)
+			if err != nil {
+				return err
+			}
+			natsOptions.RoutesStr = ""
+
+		default:
+			return errors.New("when running a cluster, you must specify a way to discover the other cluster members: either with explicit routes or a headless service")
 		}
-		natsOptions.Routes = routeURLs
 
 		lg.Info("NATS clustering enabled",
 			zap.String("cluster_id", natsOptions.Cluster.Name),
@@ -128,6 +147,35 @@ func (s *Server) Stop() error {
 	}
 
 	return nil
+}
+
+func (s Server) discoverIPs(svc string, port int, userinfo *url.Userinfo) ([]*url.URL, error) {
+	resolver := net.DefaultResolver
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	nsRecord, err := resolver.LookupIP(ctx, "ip4", svc)
+	if err != nil {
+		return nil, err
+	}
+
+	urls := make([]*url.URL, 0, len(nsRecord))
+
+	for _, addr := range nsRecord {
+		u := &url.URL{
+			Scheme: "nats",
+			Host:   fmt.Sprintf("%v:%d", addr, port),
+			User:   userinfo,
+		}
+		urls = append(urls, u)
+	}
+
+	filtered, err := server.RemoveSelfReference(port, urls)
+	if err != nil {
+		return nil, err
+	}
+
+	return filtered, nil
 }
 
 var p = &tracecontext.HTTPFormat{}
