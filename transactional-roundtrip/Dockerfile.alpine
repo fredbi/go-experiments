@@ -1,0 +1,62 @@
+# syntax=docker/dockerfile:experimental
+
+# versioning tags are not used in this demo
+ARG version
+ARG commit
+ARG dirty
+
+FROM golang:alpine as base
+
+RUN mkdir -p /stage/data /stage/etc/ssl/certs &&\
+  apk add --no-cache musl-dev gcc ca-certificates mailcap upx tzdata zip git openssh &&\
+  update-ca-certificates &&\
+  cp /etc/ssl/certs/ca-certificates.crt /stage/etc/ssl/certs/ca-certificates.crt &&\
+  cp /etc/mime.types /stage/etc/mime.types
+
+WORKDIR /usr/share/zoneinfo
+RUN zip -r -0 /stage/zoneinfo.zip .
+
+ADD go.mod /app/go.mod
+ADD go.sum /app/go.sum
+WORKDIR /app
+
+# Stuff to build against private repositories: the ssh-agent's key is forwarded to the building container
+ENV GOPRIVATE github.com/fredbi/*
+ENV GIT_ORG=github.com/fredbi
+RUN mkdir -p -m 0600 ${HOME}/.ssh && ssh-keyscan github.com >> ${HOME}/.ssh/known_hosts && \
+    printf "[url \"ssh://git@${GIT_ORG}/\"]\n\tinsteadOf = https://${GIT_ORG}/" >> ${HOME}/.gitconfig
+
+RUN --mount=type=ssh go mod download
+
+# version information shouldn't interfere with caching of the dependency download
+# so they appear after the cache warming
+ARG version
+ARG commit
+
+ENV VERSION ${version}
+ENV GIT_COMMIT ${commit}
+ENV APP daemon
+
+ADD . /app
+# build as statically linked binary
+RUN LDFLAGS="-s -w -linkmode external -extldflags \"-static\"" &&\
+    go build -o /stage/usr/bin/${APP} -ldflags "$LDFLAGS" ./cmd/${APP}
+RUN upx /stage/usr/bin/${APP}
+
+# Build the dist image
+FROM scratch
+COPY --from=base /stage /
+
+LABEL repo=github.com/fredbi/go-experiments
+LABEL base=alpine/scratch
+
+ARG version
+ARG commit
+
+ENV VERSION ${version}
+ENV GIT_COMMIT ${commit}
+ENV PATH /usr/bin:/bin
+ENV ZONEINFO /zoneinfo.zip
+
+ENTRYPOINT [ "daemon" ]
+CMD ["--help"]

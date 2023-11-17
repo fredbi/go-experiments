@@ -1,0 +1,65 @@
+# syntax=docker/dockerfile:experimental
+
+# versioning tags are not used in this demo
+ARG version
+ARG commit
+ARG dirty
+
+FROM golang as base
+
+RUN mkdir -p /stage/data &&\
+  apt-get update -y &&\
+  apt-get install -y ca-certificates mime-support zip git libc6
+
+# upx is not part of the debian bookwork stable release yet: have to install it manually
+RUN apt install xz-utils &&\
+    cd /tmp &&\
+    curl -sSLo upx.tar.xz  https://github.com/upx/upx/releases/download/v4.2.1/upx-4.2.1-amd64_linux.tar.xz &&\
+    tar xJf upx.tar.xz &&\
+    install upx-4.2.1-amd64_linux/upx /usr/bin &&\
+    rm -rf /tmp/upx-4.2.1-amd64_linux
+
+ADD go.mod /app/go.mod
+ADD go.sum /app/go.sum
+WORKDIR /app
+
+# Stuff to build against private repositories: the ssh-agent's key is forwarded to the building container
+ENV GOPRIVATE github.com/fredbi/*
+ENV GIT_ORG=github.com/fredbi
+RUN mkdir -p -m 0600 ${HOME}/.ssh && ssh-keyscan github.com >> ${HOME}/.ssh/known_hosts && \
+    printf "[url \"ssh://git@${GIT_ORG}/\"]\n\tinsteadOf = https://${GIT_ORG}/" >> ${HOME}/.gitconfig
+
+RUN --mount=type=ssh go mod download
+
+# version information shouldn't interfere with caching of the dependency download
+# so they appear after the cache warming
+ARG version
+ARG commit
+
+ENV VERSION ${version}
+ENV GIT_COMMIT ${commit}
+ENV APP daemon
+
+ADD . /app
+# build as PIE, then strip the binary with upx
+RUN LDFLAGS="-s -w" &&\
+    go build -buildmode=pie -o /stage/usr/bin/${APP} -ldflags "$LDFLAGS" ./cmd/${APP} &&\
+    upx /stage/usr/bin/${APP}
+
+
+# Build the dist image from a distroless image with libc
+FROM gcr.io/distroless/base-debian12
+COPY --from=base /stage /
+
+LABEL repo=github.com/fredbi/go-experiments
+LABEL base=gcr.io/distroless
+
+ARG version
+ARG commit
+
+ENV VERSION ${version}
+ENV GIT_COMMIT ${commit}
+ENV PATH /usr/bin:/bin
+
+ENTRYPOINT [ "daemon" ]
+CMD ["--help"]
