@@ -166,6 +166,9 @@ func (p Producer) subscriptionHandler(incoming *nats.Msg) {
 	}
 
 	// update DB with next status: received
+	//
+	// NOTE: the update is not carried out if the status has not changed
+	// (i.e if we process a redelivered version of a response already digested)
 	msg.MessageStatus = repos.MessageStatusReceived
 	msg.LastTime = time.Now().UTC()
 	if err := p.rt.Repos().Messages().Update(ctx, msg); err != nil {
@@ -230,15 +233,17 @@ func (p Producer) replay(parentCtx context.Context) error {
 	spanCtx, span, lg := tracer.StartSpan(parentCtx, p)
 	defer span.End()
 
-	ctx, cancel := context.WithTimeout(spanCtx, p.Producer.MsgProcessTimeout)
+	dbCtx, cancel := context.WithTimeout(spanCtx, p.Producer.MsgProcessTimeout)
 	defer cancel()
 
 	lg.Debug("looking for messages to be redelivered")
 
-	iterator, err := p.rt.Repos().Messages().List(ctx, repos.MessagePredicate{
+	recent := time.Now().UTC().Add(-1 * p.Producer.Replay.MinReplayDelay)
+	iterator, err := p.rt.Repos().Messages().List(dbCtx, repos.MessagePredicate{
 		FromProducer:     &p.ID,
 		MaxMessageStatus: repos.NewMessageStatus(repos.MessageStatusReceived),
 		Limit:            p.Producer.Replay.BatchSize,
+		NotUpdatedSince:  &recent, // check only not too recent
 	})
 	if err != nil {
 		return err
@@ -259,7 +264,7 @@ func (p Producer) replay(parentCtx context.Context) error {
 		msg.ProducerReplays++
 		msg.LastTime = time.Now().UTC()
 
-		if err = p.updateAndSendMessage(ctx, msg); err != nil {
+		if err = p.updateAndSendMessage(dbCtx, msg); err != nil {
 			return err
 		}
 	}
@@ -284,6 +289,7 @@ func (p Producer) updateAndSendMessage(parentCtx context.Context, msg repos.Mess
 	// write and commit to DB
 	ctx, cancel := context.WithTimeout(spanCtx, p.Producer.MsgProcessTimeout)
 	defer cancel()
+
 	// force the update: no status is changed, just the replay counter
 	if err := p.rt.Repos().Messages().Update(ctx, msg, repos.WithForceUpdate(true)); err != nil {
 		lg.Warn("could not write replay counts in DB", zap.Error(err))

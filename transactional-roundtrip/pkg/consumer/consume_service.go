@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/gob"
 	"errors"
-	"math/rand"
 	"time"
 
 	"github.com/fredbi/go-experiments/transactional-roundtrip/pkg/injected"
@@ -19,8 +18,9 @@ import (
 )
 
 var (
-	ErrConsumeDB  = errors.New("could not write in DB")
-	ErrConsumeMsg = errors.New("message taken into account, but service temporily unavailable")
+	ErrConsumeDB               = errors.New("could not write in DB")
+	ErrConsumeMsg              = errors.New("message taken into account, but service temporily unavailable")
+	ErrUnexpectedMessageStatus = errors.New("unexpected message status")
 )
 
 type (
@@ -31,6 +31,7 @@ type (
 		subscribedSubject string
 		publishedSubject  func(string) string
 		nc                *nats.Conn
+		processor         MessageProcessor
 
 		settings
 	}
@@ -38,8 +39,9 @@ type (
 
 func New(rt injected.Runtime, id string) *Consumer {
 	return &Consumer{
-		ID: id,
-		rt: rt,
+		ID:        id,
+		rt:        rt,
+		processor: NewDummyProcessor(),
 	}
 }
 
@@ -66,6 +68,7 @@ func (p Consumer) subscriptionHandler(incoming *nats.Msg) {
 	)
 	defer span.End()
 
+	// unmarshal the incoming message
 	buffer := bytes.NewReader(incoming.Data)
 	var msg repos.Message
 	dec := gob.NewDecoder(buffer)
@@ -77,24 +80,21 @@ func (p Consumer) subscriptionHandler(incoming *nats.Msg) {
 
 		return
 	}
+
 	lg = lg.With(zap.String("id", msg.ID))
 
-	if err := msg.Validate(); err != nil {
-		lg.Error("unexpected incoming message",
-			zap.String("outcome", "message thrown away"),
-			zap.Error(err),
-		)
-
-		return
-	}
-
-	// sanity check on processing status: expect only confirmations to have a decided outcome
-	if msg.MessageStatus != repos.MessageStatusReceived && msg.ProcessingStatus != repos.ProcessingStatusPending {
-		lg.Error("unexpected response status",
-			zap.String("outcome", "message thrown away"),
-			zap.Stringer("message_status", msg.MessageStatus),
-			zap.Stringer("processing_status", msg.ProcessingStatus),
-		)
+	if err := p.check(ctx, msg); err != nil {
+		// send back a rejected result at once instead
+		// of letting the producer retry infinitely.
+		//
+		// If this response doesn't get back to the producer, it wil be
+		// replayed next time.
+		msg.ProcessingStatus = repos.ProcessingStatusRejected
+		cause := err.Error()
+		msg.RejectionCause = &cause
+		if err := p.sendMessage(ctx, msg); err != nil {
+			return
+		}
 
 		return
 	}
@@ -106,61 +106,21 @@ func (p Consumer) subscriptionHandler(incoming *nats.Msg) {
 		lg.Debug("nacked message received for processing", zap.Any("msg", msg))
 
 		if err := p.process(ctx, &msg); err != nil {
-			lg.Warn("message processing error",
-				zap.String("outcome", "will be retried upon redelivery"),
-				zap.Error(err),
-			)
-
 			return
 		}
 
-		// update the status of the message: now we can reply with a decided outcome
-		msg.MessageStatus = repos.MessageStatusPosted
-		msg.LastTime = time.Now().UTC()
-
-		// encode the message as []byte, using gob
-		payload, err := msg.Bytes()
-		if err != nil {
-			lg.Warn("could not marshal message",
-				zap.String("outcome", "will be retried upon redelivery"),
-				zap.Error(err),
-			)
-
+		if err := p.sendMessage(ctx, msg); err != nil {
 			return
 		}
 
-		// send result
-		post := nats.NewMsg(p.publishedSubject(msg.ProducerID))
-		post.Data = payload
-		post.Reply = p.subscribedSubject
-		post.Header.Add("trace_id", span.SpanContext().TraceID.String())
-		post.Header.Add("span_id", span.SpanContext().SpanID.String())
-
-		if err := p.nc.PublishMsg(post); err != nil {
-			lg.Warn("could not publish",
-				zap.String("outcome", "will be resubmitted later"),
-				zap.Error(err),
-			)
-		}
-
-		lg.Debug("result sent back to producer", zap.String("producer_id", msg.ProducerID), zap.Any("raw_msg", post))
+		lg.Debug("result sent back to producer", zap.String("producer_id", msg.ProducerID), zap.Any("msg", msg))
 
 	case repos.MessageStatusReceived:
 		// ok. confirmation from producer: update private status
 		lg.Debug("confirmation received from producer", zap.String("producer_id", msg.ProducerID), zap.Any("msg", msg))
 
-		if err := p.rt.Repos().Messages().UpdateConfirmed(ctx, msg.ID, repos.MessageStatusConfirmed); err != nil {
-			if errors.Is(err, repos.ErrAlreadyProcessed) {
-				lg.Warn("duplicate message entry detected",
-					zap.String("outcome", "no new message is created, user input is discarded"),
-					zap.Error(err),
-				)
-			} else {
-				lg.Warn("could not write in DB",
-					zap.String("outcome", "will be retried upon redelivery"),
-					zap.Error(err),
-				)
-			}
+		if err := p.confirmed(ctx, msg); err != nil {
+			return
 		}
 
 	default:
@@ -174,30 +134,108 @@ func (p Consumer) subscriptionHandler(incoming *nats.Msg) {
 	}
 }
 
-//nolint:unparam
+// check the incoming message.
+//
+// TODO: at this moment, we assume that invalid content is a temporary situtation
+// (data corruption, etc).
+//
+// Another way to respond to more permanent issues with invalid data would be to send
+// back a rejected result status right away.
+func (p Consumer) check(parentCtx context.Context, msg repos.Message) error {
+	_, span, lg := tracer.StartSpan(parentCtx, p)
+	defer span.End()
+
+	lg = lg.With(zap.String("id", msg.ID))
+
+	if err := msg.Validate(); err != nil {
+		lg.Error("unexpected incoming message",
+			zap.String("outcome", "message thrown away"),
+			zap.Error(err),
+		)
+
+		return err
+	}
+
+	// sanity check on processing status: expect only confirmations to have a decided outcome
+	if msg.MessageStatus != repos.MessageStatusReceived && msg.ProcessingStatus != repos.ProcessingStatusPending {
+		lg.Error("unexpected response status",
+			zap.String("outcome", "message thrown away"),
+			zap.Stringer("message_status", msg.MessageStatus),
+			zap.Stringer("processing_status", msg.ProcessingStatus),
+		)
+
+		return ErrUnexpectedMessageStatus
+	}
+
+	return nil
+}
+
 func (p Consumer) process(parentCtx context.Context, msg *repos.Message) error {
-	_, cancel := context.WithTimeout(parentCtx, p.Consumer.ProcessTimeout)
+	ctx, span, lg := tracer.StartSpan(parentCtx, p)
+	defer span.End()
+
+	lg = lg.With(zap.String("id", msg.ID))
+
+	processCtx, cancel := context.WithTimeout(ctx, p.Consumer.ProcessTimeout)
 	defer cancel()
 
-	// TODO: some more realistic processing (e.g. build output files...)
-	// for demo, just put random numbers to fill-in the balances
-	msg.BalanceBefore = repos.NewDecimal(rand.Int63n(1_000_000_000), 2) //#nosec
-	msg.BalanceAfter = repos.NewDecimal(rand.Int63n(1_000_000_000), 2)  //#nosec
-	msg.ProcessingStatus = repos.ProcessingStatusOK
+	if err := p.processor.Process(processCtx, msg); err != nil {
+		lg.Warn("message processing error",
+			zap.String("outcome", "will be retried upon redelivery"),
+			zap.Error(err),
+		)
+
+		return err
+	}
+
+	// update the status of the message: now we can reply with a decided outcome
+	msg.MessageStatus = repos.MessageStatusPosted
+
+	return nil
+}
+
+func (p Consumer) confirmed(parentCtx context.Context, msg repos.Message) error {
+	ctx, span, lg := tracer.StartSpan(parentCtx, p)
+	defer span.End()
+
+	lg = lg.With(zap.String("id", msg.ID))
+
+	if err := p.rt.Repos().Messages().UpdateConfirmed(ctx, msg.ID, repos.MessageStatusConfirmed); err != nil {
+		if !errors.Is(err, repos.ErrAlreadyProcessed) {
+			lg.Warn("could not write in DB",
+				zap.String("outcome", "will be retried upon redelivery"),
+				zap.Error(err),
+			)
+
+			return err
+		}
+
+		lg.Warn("duplicate message entry detected",
+			zap.String("outcome", "no new message is created, user input is discarded"),
+			zap.Error(err),
+		)
+	}
 
 	return nil
 }
 
 // replay messages to the consumer
-func (p Consumer) replay(ctx context.Context) error {
-	dbCtx, cancel := context.WithTimeout(ctx, p.Consumer.MsgProcessTimeout)
+func (p Consumer) replay(parentCtx context.Context) error {
+	spanCtx, span, lg := tracer.StartSpan(parentCtx, p)
+	defer span.End()
+
+	dbCtx, cancel := context.WithTimeout(spanCtx, p.Consumer.MsgProcessTimeout)
 	defer cancel()
 
+	lg.Debug("looking for messages to be redelivered")
+
 	// list all currently unconfirmed messages and redeliver
+	recent := time.Now().UTC().Add(-1 * p.Consumer.Replay.MinReplayDelay)
 	iterator, err := p.rt.Repos().Messages().List(dbCtx, repos.MessagePredicate{
-		FromConsumer: &p.ID,
-		Limit:        p.Consumer.Replay.BatchSize,
-		Unconfirmed:  true,
+		FromConsumer:    &p.ID,
+		Limit:           p.Consumer.Replay.BatchSize,
+		Unconfirmed:     true,    // check only unconfirmed messages
+		NotUpdatedSince: &recent, // check only not too recent
 	})
 	if err != nil {
 		return err
@@ -214,9 +252,7 @@ func (p Consumer) replay(ctx context.Context) error {
 
 		// republish message
 		msg.ConsumerReplays++
-		msg.LastTime = time.Now().UTC()
-
-		if err = p.resendMessage(dbCtx, msg); err != nil {
+		if err = p.sendMessage(dbCtx, msg); err != nil {
 			return err
 		}
 	}
@@ -224,16 +260,21 @@ func (p Consumer) replay(ctx context.Context) error {
 	return nil
 }
 
-func (p Consumer) resendMessage(parentCtx context.Context, msg repos.Message) error {
+// send back the message to the producer, with an updated timing
+func (p Consumer) sendMessage(parentCtx context.Context, msg repos.Message) error {
 	_, span, lg := tracer.StartSpan(parentCtx, p)
 	defer span.End()
 
 	lg = lg.With(zap.String("id", msg.ID))
 
 	// encode the message as []byte, using gob
+	msg.LastTime = time.Now().UTC()
 	payload, err := msg.Bytes()
 	if err != nil {
-		lg.Warn("could not marshal message", zap.Error(err))
+		lg.Warn("could not marshal message",
+			zap.String("outcome", "will be retried upon redelivery"),
+			zap.Error(err),
+		)
 
 		return err
 	}
@@ -246,7 +287,7 @@ func (p Consumer) resendMessage(parentCtx context.Context, msg repos.Message) er
 	post.Header.Set("span_id", span.SpanContext().SpanID.String())
 	if err := p.nc.PublishMsg(post); err != nil {
 		lg.Warn("could not publish",
-			zap.String("outcome", "will be resubmitted later"),
+			zap.String("outcome", "should be resubmitted later by the producer"),
 			zap.Error(err),
 		)
 	}

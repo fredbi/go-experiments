@@ -14,8 +14,9 @@ var defaultSettings = settings{
 	Nats: natsembedded.DefaultSettings,
 	Producer: producerSettings{
 		Replay: replaySettings{
-			BatchSize: 1000,
-			WakeUp:    30 * time.Second,
+			BatchSize:      1000,
+			WakeUp:         30 * time.Second,
+			MinReplayDelay: 30 * time.Second,
 		},
 		API: apiSettings{
 			Port: 9990,
@@ -38,8 +39,9 @@ type (
 	}
 
 	replaySettings struct {
-		BatchSize uint64
-		WakeUp    time.Duration
+		BatchSize      uint64
+		WakeUp         time.Duration
+		MinReplayDelay time.Duration
 	}
 
 	apiSettings struct {

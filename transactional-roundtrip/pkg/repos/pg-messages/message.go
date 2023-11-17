@@ -244,6 +244,9 @@ func (r *Repo) List(ctx context.Context, p repos.MessagePredicate) (repos.Messag
 	if p.UpdatedSince != nil {
 		query = query.Where(sq.Expr("last_time > ?", *p.UpdatedSince))
 	}
+	if p.NotUpdatedSince != nil {
+		query = query.Where(sq.Expr("last_time < ?", *p.NotUpdatedSince))
+	}
 	if p.WithMessageStatus != nil {
 		query = query.Where(sq.Eq{"message_status": *p.WithMessageStatus})
 	}

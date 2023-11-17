@@ -77,6 +77,7 @@ type (
 	// MessagePredicate is used to specify filters when querying Messages
 	MessagePredicate struct {
 		UpdatedSince         *time.Time
+		NotUpdatedSince      *time.Time
 		WithMessageStatus    *MessageStatus
 		WithProcessingStatus *ProcessingStatus
 		MaxMessageStatus     *MessageStatus

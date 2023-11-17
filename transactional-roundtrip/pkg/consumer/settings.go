@@ -14,8 +14,9 @@ var defaultSettings = settings{
 	Nats: natsembedded.DefaultSettings,
 	Consumer: consumerSettings{
 		Replay: replaySettings{
-			BatchSize: 1000,
-			WakeUp:    30 * time.Second,
+			BatchSize:      1000,
+			WakeUp:         30 * time.Second,
+			MinReplayDelay: 30 * time.Second,
 		},
 		MsgProcessTimeout: 5 * time.Second,
 		ProcessTimeout:    30 * time.Second,
@@ -35,8 +36,9 @@ type consumerSettings struct {
 }
 
 type replaySettings struct {
-	BatchSize uint64
-	WakeUp    time.Duration
+	BatchSize      uint64
+	WakeUp         time.Duration
+	MinReplayDelay time.Duration
 }
 
 // DefaultSettings returns all defaults for this package as a viper register.
