@@ -1,6 +1,7 @@
 package pgrepo
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"fmt"
@@ -8,7 +9,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/fredbi/go-experiments/transactional-roundtrip/pkg/injected"
+	"github.com/fredbi/go-cli/config"
 	"github.com/fredbi/go-trace/log"
 	zapadapter "github.com/jackc/pgx-zap"
 	"github.com/jackc/pgx/v5"
@@ -17,6 +18,7 @@ import (
 	"github.com/opencensus-integrations/ocsql"
 	"github.com/spf13/viper"
 	"go.uber.org/zap"
+	"gopkg.in/yaml.v3"
 )
 
 const (
@@ -74,7 +76,7 @@ type (
 	//					     otherDB:
 	settings struct {
 		Config    *poolSettings
-		Databases map[string]databaseSettings `mapstructure:"postgres"`
+		Databases map[string]databaseSettings `mapstructure:"postgres" yaml:"postgres" json:"postgres"`
 	}
 
 	poolSettings struct {
@@ -104,6 +106,18 @@ type (
 	}
 )
 
+// DefaultSettings returns all defaults for this package as a viper register.
+//
+// This is primarily intended for documentation & help purpose.
+func DefaultSettings() *viper.Viper {
+	v := viper.New()
+	v.SetConfigType("yaml")
+	asYAML, _ := yaml.Marshal(defaultSettings)
+	_ = v.ReadConfig(bytes.NewReader(asYAML))
+
+	return v
+}
+
 func makeSettings(cfg *viper.Viper, l *zap.Logger) (settings, error) {
 	s := defaultSettings
 
@@ -113,7 +127,7 @@ func makeSettings(cfg *viper.Viper, l *zap.Logger) (settings, error) {
 		return s, nil
 	}
 
-	allDBConfig := injected.ViperSub(cfg, "databases")
+	allDBConfig := config.ViperSub(cfg, "databases")
 	if allDBConfig == nil {
 		l.Warn("no databases section passed in config. Using defaults")
 

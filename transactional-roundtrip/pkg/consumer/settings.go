@@ -1,10 +1,13 @@
 package consumer
 
 import (
+	"bytes"
 	"time"
 
-	"github.com/fredbi/go-experiments/transactional-roundtrip/pkg/injected"
+	"github.com/fredbi/go-cli/config"
 	natsembedded "github.com/fredbi/go-experiments/transactional-roundtrip/pkg/nats"
+	"github.com/spf13/viper"
+	"gopkg.in/yaml.v3"
 )
 
 var defaultSettings = settings{
@@ -20,7 +23,7 @@ var defaultSettings = settings{
 }
 
 type settings struct {
-	Nats     natsembedded.Settings
+	Nats     natsembedded.Settings `yaml:"-" json:"-"`
 	Consumer consumerSettings
 }
 
@@ -36,6 +39,18 @@ type replaySettings struct {
 	WakeUp    time.Duration
 }
 
+// DefaultSettings returns all defaults for this package as a viper register.
+//
+// This is primarily intended for documentation & help purpose.
+func DefaultSettings() *viper.Viper {
+	v := viper.New()
+	v.SetConfigType("yaml")
+	asYAML, _ := yaml.Marshal(defaultSettings)
+	_ = v.ReadConfig(bytes.NewReader(asYAML))
+
+	return v
+}
+
 // makeConfig resolves the config sections of interest or pick default settings.
 func (p Consumer) makeConfig() (settings, error) {
 	cfg := p.rt.Config()
@@ -48,7 +63,7 @@ func (p Consumer) makeConfig() (settings, error) {
 	}
 	s.Nats = natsSettings
 
-	appConfig := injected.ViperSub(cfg, "app")
+	appConfig := config.ViperSub(cfg, "app")
 	if appConfig == nil {
 		return s, nil
 	}

@@ -33,6 +33,11 @@ const (
 	NatsConfig = "nats"
 )
 
+// migrations section
+const (
+	MigrationsConfig = "migrations"
+)
+
 // SetDefaults for CLI settings.
 //
 // At this moment, all defaults are either defined from CLI flag bindings

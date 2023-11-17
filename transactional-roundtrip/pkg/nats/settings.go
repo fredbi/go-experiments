@@ -1,11 +1,13 @@
 package nats
 
 import (
+	"bytes"
 	"time"
 
-	"github.com/fredbi/go-experiments/transactional-roundtrip/pkg/injected"
+	"github.com/fredbi/go-cli/config"
 	"github.com/nats-io/nats.go"
 	"github.com/spf13/viper"
+	"gopkg.in/yaml.v3"
 )
 
 // DefaultSettings define defaults for the embedded NATS server and clients.
@@ -52,13 +54,25 @@ type (
 	}
 )
 
+// DefaultSettingsNATS returns all defaults for this package as a viper register.
+//
+// This is primarily intended for documentation & help purpose.
+func DefaultSettingsNATS() *viper.Viper {
+	v := viper.New()
+	v.SetConfigType("yaml")
+	asYAML, _ := yaml.Marshal(DefaultSettings)
+	_ = v.ReadConfig(bytes.NewReader(asYAML))
+
+	return v
+}
+
 func MakeSettings(cfg *viper.Viper) (Settings, error) {
 	s := DefaultSettings
 	if cfg == nil {
 		return s, nil
 	}
 
-	cfg = injected.ViperSub(cfg, "nats")
+	cfg = config.ViperSub(cfg, "nats")
 	if cfg == nil {
 		return s, nil
 	}

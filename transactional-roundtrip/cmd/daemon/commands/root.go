@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"fmt"
 	stdlog "log"
 	"os"
 	"strings"
@@ -11,10 +12,15 @@ import (
 	"github.com/fredbi/go-cli/config"
 	configkeys "github.com/fredbi/go-experiments/transactional-roundtrip/cmd/daemon/commands/config-keys"
 	"github.com/fredbi/go-experiments/transactional-roundtrip/db/migrations"
+	"github.com/fredbi/go-experiments/transactional-roundtrip/pkg/consumer"
+	natsembedded "github.com/fredbi/go-experiments/transactional-roundtrip/pkg/nats"
+	"github.com/fredbi/go-experiments/transactional-roundtrip/pkg/producer"
 	"github.com/fredbi/go-experiments/transactional-roundtrip/pkg/repos/pgrepo"
 	"github.com/fredbi/go-trace/log"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 	"go.uber.org/zap"
+	"gopkg.in/yaml.v3"
 )
 
 const (
@@ -124,7 +130,7 @@ func Root() *cli.Command {
 					PersistentPreRunE: prerun,
 					RunE:              consumerCommand,
 				},
-				cli.WithFlag("no-consumer-replay", false,
+				cli.WithFlag("no-replay", false,
 					"disable background message redeliveries by consumer",
 					cli.BindFlagToConfig(inSection(configkeys.AppConfig, "consumer", "noreplay")),
 				),
@@ -141,19 +147,43 @@ func Root() *cli.Command {
 					"port to serve http requests",
 					cli.BindFlagToConfig(inSection(configkeys.AppConfig, "producer.api.port")),
 				),
-				cli.WithFlag("no-producer-replay", false,
+				cli.WithFlag("no-replay", false,
 					"disable background message redeliveries by producer",
 					cli.BindFlagToConfig(inSection(configkeys.AppConfig, "producer", "noreplay")),
 				),
 			),
+			// additional help topics
 			cli.NewCommand(
 				&cobra.Command{
-					Use:   "help-config",
-					Short: "generates the default config as a YAML configuration file",
-					RunE:  nil, // TODO: use settings.Defaults() to marshal a YAML config file
+					Use:   "config",
+					Short: "prints default settings as a YAML configuration file",
 				},
+				cli.WithCobraOptions(func(helpConfig *cobra.Command) {
+					helpConfig.SetHelpFunc(func(_ *cobra.Command, _ []string) {
+						cfg := viper.New()
+						repoCfg := pgrepo.DefaultSettings().AllSettings()
+						cfg.Set(configkeys.DBConfig, repoCfg)
+
+						natsCfg := natsembedded.DefaultSettingsNATS().AllSettings()
+						cfg.Set(configkeys.NatsConfig, natsCfg)
+
+						migrationsCfg := migrations.DefaultSettings().AllSettings()
+						cfg.Set(configkeys.MigrationsConfig, migrationsCfg)
+
+						p := producer.DefaultSettings()
+						consumerCfg := consumer.DefaultSettings().AllSettings()
+						_ = p.MergeConfigMap(consumerCfg)
+						appCfg := p.AllSettings()
+						cfg.Set(configkeys.AppConfig, appCfg)
+
+						asYAML, _ := yaml.Marshal(cfg.AllSettings())
+
+						fmt.Println("--\n# default settings\n\n" + string(asYAML)) //nolint:forbidigo
+					})
+				}),
 			),
-		))
+		),
+	)
 }
 
 // prerun is run prior to any command.
@@ -198,6 +228,8 @@ func prerun(c *cobra.Command, _ []string) error {
 
 	return m.Migrate(ctx)
 }
+
+// helper functions
 
 func inSection(section string, keys ...string) string {
 	return strings.Join(append([]string{section}, keys...), ".")
