@@ -89,6 +89,8 @@ func (p Consumer) subscriptionHandler(incoming *nats.Msg) {
 		//
 		// If this response doesn't get back to the producer, it wil be
 		// replayed next time.
+		lg.Warn("invalid message content caused rejection", zap.Any("msg", msg))
+
 		msg.ProcessingStatus = repos.ProcessingStatusRejected
 		cause := err.Error()
 		msg.RejectionCause = &cause
@@ -126,6 +128,8 @@ func (p Consumer) subscriptionHandler(incoming *nats.Msg) {
 	default:
 		lg.Error("unexpected response status",
 			zap.String("outcome", "message thrown away"),
+			zap.String("subject", incoming.Subject),
+			zap.String("from_producer", msg.ProducerID),
 			zap.Stringer("message_status", msg.MessageStatus),
 			zap.Stringer("processing_status", msg.ProcessingStatus),
 		)
@@ -136,11 +140,9 @@ func (p Consumer) subscriptionHandler(incoming *nats.Msg) {
 
 // check the incoming message.
 //
-// TODO: at this moment, we assume that invalid content is a temporary situtation
-// (data corruption, etc).
+// At this moment, we assume that invalid content is a permanent situtation (e.g. fault in code).
 //
-// Another way to respond to more permanent issues with invalid data would be to send
-// back a rejected result status right away.
+// Transitory corruptions are assumed to be caught by the unmarshalling step.
 func (p Consumer) check(parentCtx context.Context, msg repos.Message) error {
 	_, span, lg := tracer.StartSpan(parentCtx, p)
 	defer span.End()
@@ -148,7 +150,7 @@ func (p Consumer) check(parentCtx context.Context, msg repos.Message) error {
 	lg = lg.With(zap.String("id", msg.ID))
 
 	if err := msg.Validate(); err != nil {
-		lg.Error("unexpected incoming message",
+		lg.Error("invalid incoming message content",
 			zap.String("outcome", "message thrown away"),
 			zap.Error(err),
 		)
@@ -211,7 +213,7 @@ func (p Consumer) confirmed(parentCtx context.Context, msg repos.Message) error 
 		}
 
 		lg.Warn("duplicate message entry detected",
-			zap.String("outcome", "no new message is created, user input is discarded"),
+			zap.String("outcome", "no action"),
 			zap.Error(err),
 		)
 	}
@@ -230,12 +232,12 @@ func (p Consumer) replay(parentCtx context.Context) error {
 	lg.Debug("looking for messages to be redelivered")
 
 	// list all currently unconfirmed messages and redeliver
-	recent := time.Now().UTC().Add(-1 * p.Consumer.Replay.MinReplayDelay)
+	notTooRecent := time.Now().UTC().Add(-1 * p.Consumer.Replay.MinReplayDelay)
 	iterator, err := p.rt.Repos().Messages().List(dbCtx, repos.MessagePredicate{
 		FromConsumer:    &p.ID,
-		Limit:           p.Consumer.Replay.BatchSize,
-		Unconfirmed:     true,    // check only unconfirmed messages
-		NotUpdatedSince: &recent, // check only not too recent
+		Limit:           p.Consumer.Replay.BatchSize, // only replay the oldest (batchsize) this time
+		Unconfirmed:     true,                        // check only unconfirmed messages
+		NotUpdatedSince: &notTooRecent,               // check only not too recent
 	})
 	if err != nil {
 		return err

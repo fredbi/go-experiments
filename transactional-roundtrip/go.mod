@@ -9,6 +9,7 @@ require (
 	github.com/fredbi/go-patterns v0.1.1
 	github.com/fredbi/go-trace v1.2.0
 	github.com/fredbi/gooseplus v1.1.3
+	github.com/go-chi/chi v1.5.4
 	github.com/go-chi/chi/v5 v5.0.10
 	github.com/goccy/go-json v0.10.2
 	github.com/goombaio/namegenerator v0.0.0-20181006234301-989e774b106e

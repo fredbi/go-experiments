@@ -238,12 +238,12 @@ func (p Producer) replay(parentCtx context.Context) error {
 
 	lg.Debug("looking for messages to be redelivered")
 
-	recent := time.Now().UTC().Add(-1 * p.Producer.Replay.MinReplayDelay)
+	notTooRecent := time.Now().UTC().Add(-1 * p.Producer.Replay.MinReplayDelay)
 	iterator, err := p.rt.Repos().Messages().List(dbCtx, repos.MessagePredicate{
 		FromProducer:     &p.ID,
-		MaxMessageStatus: repos.NewMessageStatus(repos.MessageStatusReceived),
-		Limit:            p.Producer.Replay.BatchSize,
-		NotUpdatedSince:  &recent, // check only not too recent
+		MaxMessageStatus: repos.NewMessageStatus(repos.MessageStatusReceived), // only replay messages which response has not been ack-ed yet
+		Limit:            p.Producer.Replay.BatchSize,                         // only replay the oldest (batchsize) this time
+		NotUpdatedSince:  &notTooRecent,                                       // check only not too recent
 	})
 	if err != nil {
 		return err

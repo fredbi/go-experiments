@@ -20,6 +20,9 @@ var defaultSettings = settings{
 		},
 		MsgProcessTimeout: 5 * time.Second,
 		ProcessTimeout:    30 * time.Second,
+		Processor: processorSettings{
+			Dummy: defaultDummyProcessorSettings,
+		},
 	},
 }
 
@@ -33,12 +36,17 @@ type consumerSettings struct {
 	MsgProcessTimeout time.Duration
 	ProcessTimeout    time.Duration
 	NoReplay          bool
+	Processor         processorSettings
 }
 
 type replaySettings struct {
 	BatchSize      uint64
 	WakeUp         time.Duration
 	MinReplayDelay time.Duration
+}
+
+type processorSettings struct {
+	Dummy dummyProcessorSettings
 }
 
 // DefaultSettings returns all defaults for this package as a viper register.

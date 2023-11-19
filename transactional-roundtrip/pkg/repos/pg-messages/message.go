@@ -41,6 +41,7 @@ var (
 		"balance_before",
 		"balance_after",
 		"rejection_cause",
+		"comment",
 	}
 
 	_ repos.MessageRepo = &Repo{}
@@ -79,7 +80,7 @@ func (r *Repo) Get(parentCtx context.Context, id string) (repos.Message, error) 
 
 	query := psql.Select(messageColumns...).From("message").Where(sq.Eq{"id": id})
 	q, args := query.MustSql()
-	lg.Debug("Get message query", zap.String("sql", q), zap.Any("args", args))
+	lg.Debug("get message query", zap.String("sql", q), zap.Any("args", args))
 
 	var message repos.Message
 	err := r.DB().QueryRowxContext(ctx, q, args...).StructScan(&message)
@@ -109,11 +110,13 @@ func (r *Repo) Create(parentCtx context.Context, message repos.Message) error {
 		message.BalanceBefore,
 		message.BalanceAfter,
 		message.RejectionCause,
-	).Suffix(`ON CONFLICT (id) DO NOTHING`)
+		message.Comment,
+	).Suffix(`ON CONFLICT (id) DO NOTHING`) // mute duplicate errors: this is captured by the row count = 0
 
 	q, args := query.MustSql()
 	lg.Debug("insert message statement", zap.String("sql", q), zap.Any("args", args))
 
+	// start an explicit transaction, we know exactly what's happening: no autocommit magic
 	cancellable, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -202,6 +205,9 @@ func (r *Repo) Update(parentCtx context.Context, message repos.Message, opts ...
 		Where(sq.Eq{"id": message.ID})
 
 	if !o.Force {
+		// unless we want specifically to apply some update (in the case of the consumer, as we use the same table
+		// as a convenient implementation), we forbid updates which do not bring some progress to the state of
+		// the message.
 		query = query.Where(sq.Expr(
 			`(message_status < ?) OR (message_status = ? AND processing_status < ?)`,
 			message.MessageStatus, message.MessageStatus, message.ProcessingStatus,
@@ -228,6 +234,8 @@ func (r *Repo) Update(parentCtx context.Context, message repos.Message, opts ...
 	}
 
 	if n, _ := result.RowsAffected(); n == 0 {
+		// well this is a bit optimistic about the behavior of the app: could be that the ID is not found...
+		// A well-behaving app does not fall into this trap however, so we're good with ErrAlreadyProcessed.
 		return repos.ErrAlreadyProcessed
 	}
 

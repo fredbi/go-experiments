@@ -61,6 +61,7 @@ type (
 		Currency        string        `json:"currency" db:"currency"`
 		BalanceBefore   *Decimal      `json:"balance_before" db:"balance_before"`
 		BalanceAfter    *Decimal      `json:"balance_after" db:"balance_after"`
+		Comment         *string       `json:"comment" db:"comment"`
 		RejectionCause  *string       `json:"rejection_cause" db:"rejection_cause"`
 	}
 

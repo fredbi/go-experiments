@@ -11,8 +11,8 @@ import (
 
 	logmiddleware "github.com/fredbi/go-trace/log/middleware"
 	"github.com/fredbi/go-trace/tracer"
+	"github.com/go-chi/chi/middleware"
 	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
 	"github.com/nats-io/nats.go"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
