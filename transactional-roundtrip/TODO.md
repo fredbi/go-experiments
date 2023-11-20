@@ -7,7 +7,7 @@ Various utility packages:
 * [x] added support for cluster autodiscovery using headless service: nslookup on headless service
   e.g. flag like '--nats-cluster-headless-service xyz' which overrides '--nats-cluster-routes'
 * to be tested ...
-* pgrepo: to be factorized out in fredbi/pgutils/pgpool
+* [x] pgrepo: to be factorized out in fredbi/pgutils/pgpool
 * [x] consumer.process() to add some randomization
 * comment in message (for tests)
 * audit trail of failures (for tests) saved by MessageProcessor

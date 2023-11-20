@@ -38,6 +38,14 @@ func (s MessageStatus) String() string {
 		panic(fmt.Sprintf("invalid message status: %d", s))
 	}
 }
+func (s MessageStatus) IsValid() bool {
+	switch s {
+	case MessageStatusNacked, MessageStatusPosted, MessageStatusReceived, MessageStatusConfirmed:
+		return true
+	default:
+		return false
+	}
+}
 
 func (s MessageStatus) Less(m MessageStatus) bool {
 	return uint8(s) < uint8(m)
@@ -93,6 +101,15 @@ func (s ProcessingStatus) String() string {
 	}
 }
 
+func (s ProcessingStatus) IsValid() bool {
+	switch s {
+	case ProcessingStatusPending, ProcessingStatusRejected, ProcessingStatusOK:
+		return true
+	default:
+		return false
+	}
+}
+
 func (s ProcessingStatus) Less(m ProcessingStatus) bool {
 	return uint8(s) < uint8(m)
 }
@@ -137,6 +154,15 @@ func (s OperationType) String() string {
 		return "cancel"
 	default:
 		panic(fmt.Sprintf("invalid operation type: %d", s))
+	}
+}
+
+func (s OperationType) IsValid() bool {
+	switch s {
+	case OperationTypeDebit, OperationTypeCredit, OperationTypeBalance:
+		return true
+	default:
+		return false
 	}
 }
 

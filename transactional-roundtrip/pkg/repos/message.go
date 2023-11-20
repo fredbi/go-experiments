@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/gob"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/cockroachdb/apd/v3"
@@ -59,20 +60,21 @@ type (
 		DebtorAccount   string        `json:"debtor_account" db:"debtor_account"`
 		Amount          Decimal       `json:"amount" db:"amount"`
 		Currency        string        `json:"currency" db:"currency"`
-		BalanceBefore   *Decimal      `json:"balance_before" db:"balance_before"`
-		BalanceAfter    *Decimal      `json:"balance_after" db:"balance_after"`
-		Comment         *string       `json:"comment" db:"comment"`
-		RejectionCause  *string       `json:"rejection_cause" db:"rejection_cause"`
+		BalanceBefore   *Decimal      `json:"balance_before,omitempty" db:"balance_before"`
+		BalanceAfter    *Decimal      `json:"balance_after,omitempty" db:"balance_after"`
+		Comment         *string       `json:"comment,omitempty" db:"comment"`
+		RejectionCause  *string       `json:"rejection_cause,omitempty" db:"rejection_cause"`
 	}
 
 	// InputPayload represents the accepted user input for a message.
 	InputPayload struct {
 		CorrespondantBank string        `json:"correspondant_bank"`
-		OperationType     OperationType `json:"operation_type" db:"operation_type"`
-		CreditorAccount   string        `json:"creditor_account" db:"creditor_account"`
-		DebtorAccount     string        `json:"debtor_account" db:"debtor_account"`
-		Amount            Decimal       `json:"amount" db:"amount"`
-		Currency          string        `json:"currency" db:"currency"`
+		OperationType     OperationType `json:"operation_type"`
+		CreditorAccount   string        `json:"creditor_account"`
+		DebtorAccount     string        `json:"debtor_account"`
+		Amount            Decimal       `json:"amount"`
+		Currency          string        `json:"currency"`
+		Comment           *string       `json:"comment,omitempty"`
 	}
 
 	// MessagePredicate is used to specify filters when querying Messages
@@ -101,18 +103,43 @@ func (p InputPayload) AsMessage() Message {
 			DebtorAccount:   p.DebtorAccount,
 			Amount:          p.Amount,
 			Currency:        p.Currency,
+			Comment:         p.Comment,
 		},
 	}
 }
 
 func (p Message) Validate() error {
-	// TODO
 	// TODO: validation - check ConsumerID is legit
 	return p.Payload.Validate()
 }
 
+var zero = apd.New(0, 2)
+
 func (p Payload) Validate() error {
-	// TODO
+	if !p.OperationType.IsValid() {
+		return fmt.Errorf("invalid operation type: %d", p.OperationType)
+	}
+
+	if len(p.CreditorAccount) == 0 || len(p.CreditorAccount) > 50 {
+		return fmt.Errorf("invalid creditor account: %q", p.CreditorAccount)
+	}
+
+	if len(p.DebtorAccount) == 0 || len(p.DebtorAccount) > 50 {
+		return fmt.Errorf("invalid debtor account: %q", p.DebtorAccount)
+	}
+
+	if len(p.Currency) != 3 {
+		return fmt.Errorf("invalid currency: %q", p.Currency)
+	}
+
+	if !p.Amount.Valid || p.Amount.Decimal.Cmp(zero) <= 0 {
+		return fmt.Errorf("invalid amount: %v", p.Amount)
+	}
+
+	if p.Comment != nil && len(*p.Comment) > 255 {
+		return fmt.Errorf("comment is too long: %d chars", len(*p.Comment))
+	}
+
 	return nil
 }
 
@@ -168,6 +195,7 @@ func (d Decimal) GobEncode() ([]byte, error) {
 
 	return d.Decimal.MarshalText()
 }
+
 func (d *Decimal) Scan(value interface{}) error {
 	if d.NullDecimal == nil {
 		b := &apd.NullDecimal{}

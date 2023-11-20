@@ -74,7 +74,7 @@ func newRuntimeForCommand(c *cobra.Command) (runtime, error) {
 	}
 
 	// open DB
-	r := pgrepo.NewRepository(name, lg, cfg)
+	r := pgrepo.New(name, lg, cfg)
 	if err := r.Start(); err != nil {
 		return rt, err
 	}
