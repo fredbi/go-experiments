@@ -9,11 +9,11 @@ Various utility packages:
 * to be tested ...
 * [x] pgrepo: to be factorized out in fredbi/pgutils/pgpool
 * [x] consumer.process() to add some randomization
-* comment in message (for tests)
+* [x] comment in message (for tests)
 * audit trail of failures (for tests) saved by MessageProcessor
 * kubernetes deployment:
   - deployment n replicas for 1 producer
   - 1 deployment p replicate for consumer FRPP
   - 1 deployment p' replicate for consumer FRBNP (IBAN prefix)
-  [ ] message injection job
+* [x] message injection job
 

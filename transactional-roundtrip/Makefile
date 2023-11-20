@@ -11,6 +11,9 @@ cli-doc:
 	cd $(ROOT)/hack && go run gen_cli_doc.go
 
 
+.PHONY: all-images
+all-images: image injector-image
+
 # This works with any docker
 image: export BUILDER=DOCKER_BUILDKIT=1 docker build
 image: export DOCKERFILE=Dockerfile
@@ -18,6 +21,7 @@ image: export DOCKER_TAG=$(TAG)
 image:
 	make build-image
 
+# Same as image, but with an alpine build (the image is slightly smaller than with the distroless base image)
 image-alpine: export BUILDER=DOCKER_BUILDKIT=1 docker build
 image-alpine: export DOCKERFILE=Dockerfile.alpine
 image-alpine: export DOCKER_TAG=$(TAG)-alpine
@@ -29,6 +33,13 @@ imagex: export BUILDER=docker buildx build
 imagex: export DOCKERFILE=Dockerfile
 imagex: export DOCKER_TAG=$(TAG)
 imagex:
+	make build-image
+
+injector-image: export BUILDER=DOCKER_BUILDKIT=1 docker build
+injector-image: export DOCKERFILE=Dockerfile.injector
+injector-image: export DOCKER_TAG=$(TAG)
+injector-image: export APP=injector
+injector-image:
 	make build-image
 
 build-image:

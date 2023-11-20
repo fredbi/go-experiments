@@ -1,0 +1,3 @@
+{"correspondant_bank":" BNPAFRPH", "operation_type": "credit", "creditor_account": "FR1420041010050500013M02606", "debtor_account": "AT611904300234573201", "amount": 123.45, "currency": "EUR", "comment": "injected test transfer 1"}
+{"correspondant_bank":" BNPAFRPH", "operation_type": "debit", "creditor_account": "NL80INGB9071327418", "debtor_account": "LT833894156663311867", "amount": 678.99, "currency": "EUR", "comment": "injected test transfer 2"}
+{"correspondant_bank":" BNPAFRPH", "operation_type": "balance", "creditor_account": "GR2301479796783888364158758", "debtor_account": "GL0964848177226748", "amount": 456.78, "currency": "GB", "comment": "injected test transfer 3"}
