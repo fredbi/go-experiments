@@ -12,7 +12,7 @@ import (
 
 // DefaultSettings define defaults for the embedded NATS server and clients.
 var DefaultSettings = Settings{
-	URL: nats.DefaultURL, // e.g. nats://127.0.0.1:4222
+	URL: "nats://localhost:4222",
 	Topics: TopicsSettings{
 		Postings: "postings",
 		Results:  "results",
@@ -51,6 +51,13 @@ type (
 		ClusterURL             string
 		ClusterRoutes          string
 		ClusterHeadlessService string
+		Debug                  ServerDebugSettings
+	}
+
+	ServerDebugSettings struct {
+		Logs  bool
+		Debug bool
+		Trace bool
 	}
 )
 

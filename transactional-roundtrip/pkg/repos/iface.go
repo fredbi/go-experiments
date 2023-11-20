@@ -31,5 +31,8 @@ type (
 
 		// UpdateConfirmed is an entry point for consumers to store their own view of the message status
 		UpdateConfirmed(context.Context, string, MessageStatus) error
+
+		// UpdateReplay is an entry point for producer keep track of how many times messages have been replayed
+		UpdateReplay(context.Context, Message, ...UpdateOption) error
 	}
 )

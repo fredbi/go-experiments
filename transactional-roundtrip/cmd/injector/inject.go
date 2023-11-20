@@ -55,6 +55,7 @@ func inject(c *cobra.Command, files []string) error {
 		fsys = os.DirFS(".")
 	}
 
+	var numMsgSent uint64
 	for _, file := range files {
 		f, err := fsys.Open(file)
 		if err != nil {
@@ -94,19 +95,23 @@ func inject(c *cobra.Command, files []string) error {
 
 					return err
 				}
+				_ = resp.Body.Close()
 				cancel()
 
 				if resp.StatusCode != http.StatusOK {
 					return fmt.Errorf("request was not successful: %d", resp.StatusCode)
 				}
+
+				numMsgSent++
 			}
 		}
 
 		if err := r.Err(); err != nil {
 			return fmt.Errorf("failed to scan: %w", err)
 		}
-
 	}
+
+	zlg.Info("sent messages", zap.Uint64("num_msg", numMsgSent))
 
 	return nil
 }

@@ -2,18 +2,21 @@ module github.com/fredbi/go-experiments/transactional-roundtrip
 
 go 1.21.4
 
+replace github.com/fredbi/pgxutils => /home/fred/src/github.com/fredbi/pgxutils
+
 require (
 	github.com/Masterminds/squirrel v1.5.4
+	github.com/almerlucke/go-iban v0.0.0-20220324081643-09bcab81b879
 	github.com/cockroachdb/apd/v3 v3.2.1
 	github.com/fredbi/go-cli v0.4.0
 	github.com/fredbi/go-patterns v0.1.1
 	github.com/fredbi/go-trace v1.2.0
 	github.com/fredbi/gooseplus v1.1.3
 	github.com/fredbi/pgxutils v0.0.1
-	github.com/go-chi/chi v1.5.4
 	github.com/go-chi/chi/v5 v5.0.10
 	github.com/goccy/go-json v0.10.2
 	github.com/goombaio/namegenerator v0.0.0-20181006234301-989e774b106e
+	github.com/jackc/pgx-zap v0.0.0-20221202020421-94b1cb2f889f
 	github.com/jackc/pgx/v5 v5.5.0
 	github.com/jmoiron/sqlx v1.3.5
 	github.com/nats-io/nats-server/v2 v2.10.5
@@ -39,7 +42,6 @@ require (
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20221227161230-091c0ba34f0a // indirect
-	github.com/jackc/pgx-zap v0.0.0-20221202020421-94b1cb2f889f // indirect
 	github.com/jackc/puddle/v2 v2.2.1 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/klauspost/compress v1.17.3 // indirect

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/almerlucke/go-iban/iban"
 	"github.com/cockroachdb/apd/v3"
 )
 
@@ -106,17 +107,18 @@ func (p Message) Validate() error {
 
 var zero = apd.New(0, 2)
 
+// Validate the presence of required field and legit IBAN account identifiers.
 func (p Payload) Validate() error {
 	if !p.OperationType.IsValid() {
 		return fmt.Errorf("invalid operation type: %d", p.OperationType)
 	}
 
-	if len(p.CreditorAccount) == 0 || len(p.CreditorAccount) > 50 {
-		return fmt.Errorf("invalid creditor account: %q", p.CreditorAccount)
+	if len(p.CreditorAccount) == 0 {
+		return fmt.Errorf("required creditor account: %q", p.CreditorAccount)
 	}
 
-	if len(p.DebtorAccount) == 0 || len(p.DebtorAccount) > 50 {
-		return fmt.Errorf("invalid debtor account: %q", p.DebtorAccount)
+	if len(p.DebtorAccount) == 0 {
+		return fmt.Errorf("required debtor account: %q", p.DebtorAccount)
 	}
 
 	if len(p.Currency) != 3 {
@@ -129,6 +131,14 @@ func (p Payload) Validate() error {
 
 	if p.Comment != nil && len(*p.Comment) > 255 {
 		return fmt.Errorf("comment is too long: %d chars", len(*p.Comment))
+	}
+
+	if _, err := iban.NewIBAN(p.CreditorAccount); err != nil {
+		return fmt.Errorf("creditor account is an invalid IBAN: %q: %w", p.CreditorAccount, err)
+	}
+
+	if _, err := iban.NewIBAN(p.DebtorAccount); err != nil {
+		return fmt.Errorf("debtor account is an invalid IBAN: %q: %w", p.DebtorAccount, err)
 	}
 
 	return nil

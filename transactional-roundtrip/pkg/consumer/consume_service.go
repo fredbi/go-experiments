@@ -41,7 +41,7 @@ func New(rt injected.Runtime, id string) *Consumer {
 	return &Consumer{
 		ID:        id,
 		rt:        rt,
-		processor: NewDummyProcessor(),
+		processor: NewDummyProcessor(rt),
 	}
 }
 
@@ -140,7 +140,7 @@ func (p Consumer) subscriptionHandler(incoming *nats.Msg) {
 
 // check the incoming message.
 //
-// At this moment, we assume that invalid content is a permanent situtation (e.g. fault in code).
+// At this moment, we assume that invalid content is a permanent situation (e.g. fault in code).
 //
 // Transitory corruptions are assumed to be caught by the unmarshalling step.
 func (p Consumer) check(parentCtx context.Context, msg repos.Message) error {
@@ -189,9 +189,6 @@ func (p Consumer) process(parentCtx context.Context, msg *repos.Message) error {
 
 		return err
 	}
-
-	// update the status of the message: now we can reply with a decided outcome
-	msg.MessageStatus = repos.MessageStatusPosted
 
 	return nil
 }
@@ -254,6 +251,25 @@ func (p Consumer) replay(parentCtx context.Context) error {
 
 		// republish message
 		msg.ConsumerReplays++
+		if msg.ProcessingStatus == repos.ProcessingStatusPending {
+			// process messages that could not be processed
+			if err = p.process(dbCtx, &msg); err != nil {
+				return err
+			}
+		}
+
+		// update replay count
+		msg.ProducerReplays = 0 // will keep unchanged
+		msg.ConsumerReplays = 1 // will add 1
+		if err = p.rt.Repos().Messages().UpdateReplay(dbCtx, msg); err != nil {
+			lg.Warn("could not write replay counts in DB", zap.Error(err))
+
+			return errors.Join(
+				ErrConsumeDB,
+				err,
+			)
+		}
+
 		if err = p.sendMessage(dbCtx, msg); err != nil {
 			return err
 		}
@@ -269,8 +285,11 @@ func (p Consumer) sendMessage(parentCtx context.Context, msg repos.Message) erro
 
 	lg = lg.With(zap.String("id", msg.ID))
 
-	// encode the message as []byte, using gob
+	// update the status of the message: now we can reply with a decided outcome
+	msg.MessageStatus = repos.MessageStatusPosted
 	msg.LastTime = time.Now().UTC()
+
+	// encode the message as []byte, using gob
 	payload, err := msg.Bytes()
 	if err != nil {
 		lg.Warn("could not marshal message",

@@ -8,6 +8,7 @@ app:
   consumer:
     replay:
       batchSize: 10000
+      wakeup: 5s
 
 nats:
   server:

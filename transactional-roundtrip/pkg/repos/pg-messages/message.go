@@ -137,7 +137,7 @@ func (r *Repo) Create(parentCtx context.Context, message repos.Message) error {
 	return tx.Commit()
 }
 
-// Update a message, specifically to maintain a producer's view.
+// UpdateConfirmed updates a message, specifically to maintain a producer's view.
 //
 // Reminder: in this demo, consumers do not update the database.
 //
@@ -175,9 +175,40 @@ func (r *Repo) UpdateConfirmed(parentCtx context.Context, id string, messageStat
 	return tx.Commit()
 }
 
+// UpdateReplay updates a message, specifically to maintain the count of replays.
+//
+// All other fields remain unaffected.
+func (r *Repo) UpdateReplay(parentCtx context.Context, msg repos.Message, _ ...repos.UpdateOption) error {
+	ctx, span, lg := tracer.StartSpan(parentCtx, r)
+	defer span.End()
+
+	query := psql.Update("message").
+		Where(sq.Eq{"id": msg.ID}).
+		Set("consumer_replays", sq.Expr("consumer_replays + ?", msg.ConsumerReplays)).
+		Set("producer_replays", sq.Expr("producer_replays + ?", msg.ProducerReplays))
+
+	q, args := query.MustSql()
+	lg.Debug("update message statement", zap.String("sql", q), zap.Any("args", args))
+
+	cancellable, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	tx, err := r.DB().BeginTxx(cancellable, nil)
+	if err != nil {
+		return err
+	}
+
+	_, err = tx.ExecContext(cancellable, q, args...)
+	if err != nil {
+		return err
+	}
+
+	return tx.Commit()
+}
+
 // Update a message.
 //
-// Only statuses, last_time, replays, balances and rejection cause are mutable.
+// Only statuses, last_time, balances and rejection cause are mutable.
 //
 // An update is performed only if the message status is strictly increasing or if
 // the message status remains unchanged and the processing status increases.
@@ -196,8 +227,6 @@ func (r *Repo) Update(parentCtx context.Context, message repos.Message, opts ...
 			"message_status":    message.MessageStatus,
 			"processing_status": message.ProcessingStatus,
 			"last_time":         message.LastTime,
-			"producer_replays":  message.ProducerReplays,
-			"consumer_replays":  message.ConsumerReplays,
 			"balance_before":    message.BalanceBefore,
 			"balance_after":     message.BalanceAfter,
 			"rejection_cause":   message.RejectionCause,
@@ -207,9 +236,9 @@ func (r *Repo) Update(parentCtx context.Context, message repos.Message, opts ...
 	if !o.Force {
 		// unless we want specifically to apply some update (in the case of the consumer, as we use the same table
 		// as a convenient implementation), we forbid updates which do not bring some progress to the state of
-		// the message.
+		// the message (e.g. replays caught concurrently).
 		query = query.Where(sq.Expr(
-			`(message_status < ?) OR (message_status = ? AND processing_status < ?)`,
+			`((message_status < ?) OR (message_status = ? AND processing_status < ?))`,
 			message.MessageStatus, message.MessageStatus, message.ProcessingStatus,
 		))
 	}
@@ -225,12 +254,10 @@ func (r *Repo) Update(parentCtx context.Context, message repos.Message, opts ...
 	}
 
 	result, err := tx.ExecContext(cancellable, q, args...)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return err
-	}
-
-	if o.Force && err != nil {
-		return err
+	if err != nil {
+		if o.Force || !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
 	}
 
 	if n, _ := result.RowsAffected(); n == 0 {

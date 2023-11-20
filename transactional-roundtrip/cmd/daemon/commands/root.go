@@ -82,7 +82,7 @@ func Root() *cli.Command {
 			cli.FlagIsPersistent(),
 			cli.BindFlagToConfig(inSection(configkeys.AppConfig, configkeys.ParticipantID)),
 		),
-		cli.WithFlag("nats-url", "",
+		cli.WithFlag("nats-url", natsembedded.DefaultSettings.URL,
 			"URL to the messaging cluster. NATS defaults is to listen on localhost:4222",
 			cli.FlagIsPersistent(),
 			cli.BindFlagToConfig(inSection(configkeys.NatsConfig, "url")),
@@ -125,10 +125,10 @@ func Root() *cli.Command {
 			// consumer sub-command
 			cli.NewCommand(
 				&cobra.Command{
-					Use:               "consumer",
-					Short:             "a message consumer client",
-					PersistentPreRunE: prerun,
-					RunE:              consumerCommand,
+					Use:     "consumer",
+					Short:   "a message consumer client",
+					PreRunE: prerun,
+					RunE:    consumerCommand,
 				},
 				cli.WithFlag("no-replay", false,
 					"disable background message redeliveries by consumer",
@@ -138,10 +138,10 @@ func Root() *cli.Command {
 			// producer sub-command
 			cli.NewCommand(
 				&cobra.Command{
-					Use:               "producer",
-					Short:             "a message producer client",
-					PersistentPreRunE: prerun,
-					RunE:              producerCommand,
+					Use:     "producer",
+					Short:   "a message producer client",
+					PreRunE: prerun,
+					RunE:    producerCommand,
 				},
 				cli.WithFlag("port", 9090,
 					"port to serve http requests",
@@ -190,7 +190,7 @@ func Root() *cli.Command {
 //
 // It initializes a logger and makes sure the database is created and up to date.
 func prerun(c *cobra.Command, _ []string) error {
-	_, _, cfg := resolve.InjectedZapConfig(c,
+	_, lg, cfg := resolve.InjectedZapConfig(c,
 		resolve.WithZapLoggerDefaulter(zap.NewNop),
 		resolve.WithConfigDefaulter(configkeys.DefaultConfig),
 	)
@@ -205,7 +205,7 @@ func prerun(c *cobra.Command, _ []string) error {
 	// Re-level logger to account for possible CLI flag settings
 	ctx, zlg := resolve.RelevelInjectedZapLogger(c, cfg.GetString(configkeys.LogLevel))
 
-	zlg.Info("starting app",
+	lg.Info("starting app",
 		zap.String("app_name", appName),
 		zap.Stringer("log_level", zlg.Level()),
 	)

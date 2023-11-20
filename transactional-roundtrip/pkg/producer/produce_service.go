@@ -138,7 +138,8 @@ func (p Producer) subscriptionHandler(incoming *nats.Msg) {
 	}
 	lg = lg.With(zap.String("id", msg.ID))
 
-	// sanity check on message status protocol
+	// sanity check on message status protocol.
+	// We expect only responses with a decided outcome.
 	if msg.MessageStatus != repos.MessageStatusPosted {
 		lg.Error("unexpected response status",
 			zap.String("outcome", "message thrown away"),
@@ -154,7 +155,7 @@ func (p Producer) subscriptionHandler(incoming *nats.Msg) {
 	case repos.ProcessingStatusOK:
 		lg.Info("message has been processed OK")
 	case repos.ProcessingStatusRejected:
-		lg.Info("message has been rejected by correspondant")
+		lg.Warn("message has been rejected by correspondant", zap.Any("message", msg))
 	default:
 		lg.Error("unexpected response processing status",
 			zap.String("outcome", "message thrown away"),
@@ -171,6 +172,7 @@ func (p Producer) subscriptionHandler(incoming *nats.Msg) {
 	// (i.e if we process a redelivered version of a response already digested)
 	msg.MessageStatus = repos.MessageStatusReceived
 	msg.LastTime = time.Now().UTC()
+
 	if err := p.rt.Repos().Messages().Update(ctx, msg); err != nil {
 		if !errors.Is(err, repos.ErrAlreadyProcessed) {
 			lg.Warn("could not update the message in DB",
@@ -181,7 +183,7 @@ func (p Producer) subscriptionHandler(incoming *nats.Msg) {
 			return
 		}
 
-		lg.Info("message was already in received status",
+		lg.Warn("message was already in received status",
 			zap.String("outcome", "message confirmation redelivered"),
 			zap.Error(err),
 		)
@@ -204,8 +206,6 @@ func (p Producer) confirmMessage(parentCtx context.Context, msg repos.Message) e
 	lg = lg.With(zap.String("id", msg.ID))
 
 	// encode the message as []byte, using gob
-	msg.MessageStatus = repos.MessageStatusReceived
-	msg.LastTime = time.Now().UTC()
 	payload, err := msg.Bytes()
 	if err != nil {
 		lg.Warn("could not marshal message", zap.Error(err))
@@ -261,10 +261,11 @@ func (p Producer) replay(parentCtx context.Context) error {
 		lg.Debug("found message to be redelivered", zap.Any("msg", msg))
 
 		// republish message
-		msg.ProducerReplays++
+		msg.ProducerReplays = 1 // will add 1
+		msg.ConsumerReplays = 0 // will keep unchanged
 		msg.LastTime = time.Now().UTC()
 
-		if err = p.updateAndSendMessage(dbCtx, msg); err != nil {
+		if err = p.updateReplayAndSendMessage(dbCtx, msg); err != nil {
 			return err
 		}
 	}
@@ -272,7 +273,7 @@ func (p Producer) replay(parentCtx context.Context) error {
 	return nil
 }
 
-func (p Producer) updateAndSendMessage(parentCtx context.Context, msg repos.Message) error {
+func (p Producer) updateReplayAndSendMessage(parentCtx context.Context, msg repos.Message) error {
 	spanCtx, span, lg := tracer.StartSpan(parentCtx, p)
 	defer span.End()
 
@@ -291,7 +292,7 @@ func (p Producer) updateAndSendMessage(parentCtx context.Context, msg repos.Mess
 	defer cancel()
 
 	// force the update: no status is changed, just the replay counter
-	if err := p.rt.Repos().Messages().Update(ctx, msg, repos.WithForceUpdate(true)); err != nil {
+	if err := p.rt.Repos().Messages().UpdateReplay(ctx, msg); err != nil {
 		lg.Warn("could not write replay counts in DB", zap.Error(err))
 
 		return errors.Join(

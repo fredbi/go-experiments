@@ -55,12 +55,13 @@ func (s *Server) Start() error {
 		return err
 	}
 
-	// TODO: investigate the impact of various options
 	natsOptions := &server.Options{
 		ServerName: fmt.Sprintf("embedded-%s", s.rt.ID()),
 		Host:       host,
 		Port:       port,
-		Debug:      true,
+		NoLog:      !(s.Server.Debug.Logs || s.Server.Debug.Debug || s.Server.Debug.Trace),
+		Debug:      s.Server.Debug.Debug,
+		Trace:      s.Server.Debug.Trace,
 	}
 
 	if c.Server.ClusterID != "" {
@@ -126,6 +127,7 @@ func (s *Server) Start() error {
 	if err != nil {
 		return err
 	}
+
 	ns.ConfigureLogger()
 
 	go ns.Start()

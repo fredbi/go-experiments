@@ -1,6 +1,8 @@
 package commands
 
 import (
+	"fmt"
+
 	"github.com/fredbi/go-experiments/transactional-roundtrip/pkg/consumer"
 	"github.com/fredbi/go-experiments/transactional-roundtrip/pkg/nats"
 	"github.com/spf13/cobra"
@@ -15,7 +17,7 @@ func consumerCommand(c *cobra.Command, _ []string) error {
 	// 1. Start a NATS embedded server in the background
 	server := nats.New(rt)
 	if err = server.Start(); err != nil {
-		return err
+		return fmt.Errorf("could not start NATS embedded server: %w", err)
 	}
 	defer func() {
 		_ = server.Stop()

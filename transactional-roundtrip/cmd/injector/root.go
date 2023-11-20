@@ -70,7 +70,6 @@ func Injector() *cli.Command {
 			cli.BindFlagToConfig("injector.UseEmbedded"),
 		),
 		cli.WithInjectables(
-			// inject root logger
 			injectable.NewZapLogger(zlog),
 		),
 		cli.WithSubCommands(
@@ -83,7 +82,7 @@ func Injector() *cli.Command {
 				cli.WithCobraOptions(func(helpConfig *cobra.Command) {
 					helpConfig.SetHelpFunc(func(_ *cobra.Command, _ []string) {
 						fmt.Println("# Available built-in fixtures:") //nolint:forbidigo
-						fs.WalkDir(embeddedFixtures, ".", func(pth string, entry fs.DirEntry, _ error) error {
+						_ = fs.WalkDir(embeddedFixtures, ".", func(pth string, entry fs.DirEntry, _ error) error {
 							if entry.IsDir() {
 								return nil
 							}

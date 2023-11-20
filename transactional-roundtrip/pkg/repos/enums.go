@@ -3,9 +3,15 @@ package repos
 import "fmt"
 
 type (
-	MessageStatus    uint8
+	// MessageStatus represents the current status of a message
+	// in the end-to-end protocol.
+	MessageStatus uint8
+
+	// ProcessingStatus represents the outcome of the operation requested
+	// in a message.
 	ProcessingStatus uint8
-	OperationType    uint8
+
+	OperationType uint8
 )
 
 // Message acknoledgement statuses.

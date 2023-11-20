@@ -3,6 +3,7 @@ package producer
 import (
 	"context"
 	"crypto/rand"
+	"errors"
 	"net/http"
 	"time"
 
@@ -24,6 +25,12 @@ func (p Producer) createMessage(w http.ResponseWriter, r *http.Request) {
 			zap.String("outcome", "user request is cancelled"),
 			zap.Error(err),
 		)
+
+		if errors.Is(err, repos.ErrAlreadyProcessed) {
+			w.WriteHeader(http.StatusUnprocessableEntity)
+
+			return
+		}
 
 		w.WriteHeader(http.StatusInternalServerError)
 

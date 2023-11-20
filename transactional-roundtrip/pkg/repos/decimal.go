@@ -17,6 +17,10 @@ func NewDecimal(coef int64, exponent int32) *Decimal {
 	return &Decimal{NullDecimal: &apd.NullDecimal{Decimal: *apd.New(coef, exponent), Valid: true}}
 }
 
+func (d Decimal) MarshalJSON() ([]byte, error) {
+	return d.Decimal.MarshalText()
+}
+
 func (d *Decimal) UnmarshalJSON(data []byte) error {
 	return d.UnmarshalText(data)
 }

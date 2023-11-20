@@ -45,6 +45,7 @@ func (r *Repository) Start() error {
 	if err := r.Repository.Start(); err != nil {
 		return err
 	}
+
 	// use the postgres implementation of the messageRepo
 	r.messageRepo = messages.New(r.DB(), r.Logger(), r.cfg)
 
