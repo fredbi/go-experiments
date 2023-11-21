@@ -53,9 +53,9 @@ spec:
             {{- end }}
             {{/* TODO: resolve database secrets as environment variables refered to by the application config */}}
             - name: PG_USER
-              value: {{ .Values.postgresql.postgresqlUsername }}
+              value: {{ .Values.postgresql.auth.username }}
             - name: PG_PASSWORD
-              value: {{ .Values.postgresql.postgresqlPassword }}
+              value: {{ .Values.postgresql.auth.password }}
             {{- if .Values.dumpConfig }}
             - name: DUMP_CONFIG
               value: "1"
@@ -65,7 +65,7 @@ spec:
             - consumer
             - --participant-id
             - {{ index .Values.consumer.participants 0 }}
-            - --nats-cluster
+            - --nats-cluster-id
             - {{ .Values.nats.cluster }}
             - --nats-url
             - nats://0.0.0.0:{{.Values.nats.port}}

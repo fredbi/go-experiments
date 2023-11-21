@@ -29,7 +29,7 @@ nodeSelector: {}
 affinity: {}
 tolerations: []
 
-dumpConfig: false
+dumpConfig: true
 
 config: |
   trace:

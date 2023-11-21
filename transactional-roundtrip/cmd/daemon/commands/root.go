@@ -45,7 +45,7 @@ func Root() *cli.Command {
 	// NOTE: in this demo, the deployment context "env" is not used.
 	// This demo doesn't use merged secrets. Apply LoadWithSecrets to merge extra secret config.
 	cfg, err := config.Load(env,
-		config.WithSearchParentDir(true),
+		config.WithSearchParentDir(!hasConfigPath()),
 		config.WithMute(!dumpConfig()),
 		config.WithOutput(stdlog.Writer()),
 	)
@@ -243,4 +243,8 @@ func inSection(section string, keys ...string) string {
 // dumpConfig	prints out all settings, for debugging config issues
 func dumpConfig() bool {
 	return os.Getenv("DUMP_CONFIG") != ""
+}
+
+func hasConfigPath() bool {
+	return os.Getenv("CONFIG_DIR") != ""
 }
