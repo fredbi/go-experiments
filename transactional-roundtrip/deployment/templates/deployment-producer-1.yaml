@@ -62,8 +62,8 @@ spec:
             - name: DUMP_CONFIG
               value: "1"
             {{- end }}
+          command: [ "daemon" ]
           args:
-            - daemon
             - producer
             - '--participant-id'
             - {{ index .Values.producer.participants 0 }}
@@ -96,17 +96,17 @@ spec:
           {{- if .Values.extraVolumeMounts }}
 {{ toYaml .Values.extraVolumeMounts | indent 12 }}
           {{- end }}
-          livenessProbe:
-            httpGet:
-              path: /probe/healthz
-              port: {{ .Values.producer.service.port }}
-            initialDelaySeconds: 5
-            periodSeconds: 5
-          readinessProbe:
-            httpGet:
-              path: /probe/readyz
-              port: {{ .Values.producer.service.port }}
-            periodSeconds: 5
+          #livenessProbe:
+          #  httpGet:
+          #    path: /probe/healthz
+          #    port: {{ .Values.producer.service.port }}
+          #  initialDelaySeconds: 5
+          #  periodSeconds: 5
+          #readinessProbe:
+          #  httpGet:
+          #    path: /probe/readyz
+          #    port: {{ .Values.producer.service.port }}
+          #  periodSeconds: 5
           resources:
 {{ toYaml .Values.resources | indent 12 }}
     {{- with .Values.nodeSelector }}

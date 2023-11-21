@@ -43,8 +43,9 @@ ENV APP daemon
 ADD . /app
 # build as PIE, then strip the binary with upx
 RUN LDFLAGS="-s -w" &&\
-    go build -buildmode=pie -o /stage/usr/bin/${APP} -ldflags "$LDFLAGS" ./cmd/${APP} &&\
-    upx /stage/usr/bin/${APP}
+    go build -buildmode=pie -o /stage/usr/bin/${APP} -ldflags "$LDFLAGS" ./cmd/${APP}
+
+#upx /stage/usr/bin/${APP}
 
 
 # Build the dist image from a distroless image with libc

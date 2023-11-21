@@ -60,8 +60,8 @@ spec:
             - name: DUMP_CONFIG
               value: "1"
             {{- end }}
+          command: [ "daemon" ]
           args:
-            - daemon
             - consumer
             - --participant-id
             - {{ index .Values.consumer.participants 1 }}
