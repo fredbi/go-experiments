@@ -1,0 +1,10 @@
+apiVersion: v2
+appVersion: v0.0.1
+description: a demo with NATS embedded cluster
+name: nats-bank
+version: 0.0.1
+
+dependencies:
+  - name: postgresql
+    version: "^13.2.14"
+    repository: https://charts.bitnami.com/bitnami

@@ -117,6 +117,11 @@ func Root() *cli.Command {
 			cli.FlagIsPersistent(),
 			cli.BindFlagToConfig(inSection(configkeys.NatsConfig, "topics", "results")),
 		),
+		cli.WithFlag("nats-monitor-port", 6333,
+			"healthcheck HTTP endpoint port for NATS",
+			cli.FlagIsPersistent(),
+			cli.BindFlagToConfig(inSection(configkeys.NatsConfig, "server", "monitorHTTPPort")),
+		),
 		cli.WithInjectables(
 			// inject root logger
 			injectable.NewZapLogger(zlog),

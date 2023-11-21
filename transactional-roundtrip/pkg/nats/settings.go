@@ -25,6 +25,7 @@ var DefaultSettings = Settings{
 		ClusterURL:             "nats://localhost:5333",
 		ClusterRoutes:          "",
 		ClusterHeadlessService: "",
+		MonitorHTTPPort:        6333,
 	},
 }
 
@@ -51,6 +52,7 @@ type (
 		ClusterURL             string
 		ClusterRoutes          string
 		ClusterHeadlessService string
+		MonitorHTTPPort        int
 		Debug                  ServerDebugSettings
 	}
 

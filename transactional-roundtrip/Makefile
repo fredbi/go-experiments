@@ -7,6 +7,8 @@ DOCKERFILE ?= Dockerfile
 # TAG is a sanitized version of the git tag, suitable for use as a docker tag
 TAG ?= $(shell echo $${VERSION:="0.0.0-${COMMIT}"}|sed -E '1,$$s/[^a-zA-Z0-9_\.\-]/_/g'|sed -E '1,$$s/^[^a-zA-Z0-9_]/_/'|cut -c 1-128)
 
+include deployment/deploy.mk
+
 cli-doc:
 	cd $(ROOT)/hack && go run gen_cli_doc.go
 

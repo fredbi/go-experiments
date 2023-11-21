@@ -157,6 +157,10 @@ func (p *Producer) startHTTPHandler(ctx context.Context) error {
 		r.Get("/message/{id}", p.getMessage)
 		r.Get("/messages", p.listMessages)
 	})
+	router.Route("/probe", func(r chi.Router) {
+		r.Get("/healthz", p.healthcheck)
+		r.Get("/readyz", p.healthcheck)
+	})
 
 	addr := ":" + strconv.Itoa(p.Producer.API.Port)
 	lg.Info("listening on", zap.String("endpoint", addr))

@@ -38,6 +38,10 @@ func (p Producer) createMessage(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (p Producer) healthcheck(w http.ResponseWriter, _ *http.Request) {
+	w.Write([]byte("pass"))
+}
+
 func (p Producer) getMessage(w http.ResponseWriter, r *http.Request) {
 	parentCtx := r.Context()
 	ctx, span, lg := tracer.StartSpan(parentCtx, p)

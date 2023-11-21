@@ -62,6 +62,7 @@ func (s *Server) Start() error {
 		NoLog:      !(s.Server.Debug.Logs || s.Server.Debug.Debug || s.Server.Debug.Trace),
 		Debug:      s.Server.Debug.Debug,
 		Trace:      s.Server.Debug.Trace,
+		HTTPPort:   s.Server.MonitorHTTPPort,
 	}
 
 	if c.Server.ClusterID != "" {

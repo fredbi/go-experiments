@@ -2,8 +2,6 @@ module github.com/fredbi/go-experiments/transactional-roundtrip
 
 go 1.21.4
 
-replace github.com/fredbi/pgxutils => /home/fred/src/github.com/fredbi/pgxutils
-
 require (
 	github.com/Masterminds/squirrel v1.5.4
 	github.com/almerlucke/go-iban v0.0.0-20220324081643-09bcab81b879
@@ -12,7 +10,7 @@ require (
 	github.com/fredbi/go-patterns v0.1.1
 	github.com/fredbi/go-trace v1.2.0
 	github.com/fredbi/gooseplus v1.1.3
-	github.com/fredbi/pgxutils v0.0.1
+	github.com/fredbi/pgxutils v0.0.2
 	github.com/go-chi/chi/v5 v5.0.10
 	github.com/goccy/go-json v0.10.2
 	github.com/goombaio/namegenerator v0.0.0-20181006234301-989e774b106e
@@ -74,6 +72,6 @@ require (
 	golang.org/x/sys v0.14.0 // indirect
 	golang.org/x/text v0.14.0 // indirect
 	golang.org/x/time v0.4.0 // indirect
-	gopkg.in/DataDog/dd-trace-go.v1 v1.57.0 // indirect
+	gopkg.in/DataDog/dd-trace-go.v1 v1.58.0 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
 )

@@ -1,0 +1,116 @@
+{{- $fullname := include "app.fullname" . }}
+{{- $name := include "app.name" . }}
+{{- $chart := include "app.chart" . }}
+{{- $release := .Release.Name }}
+{{- $service := .Release.Service }}
+{{- $namespace := .Release.Namespace }}
+{{- $config := fromYaml .Values.config }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: '{{ $fullname }}-{{ index .Values.consumer.participants 1 | lower }}'
+  labels:
+    app.kubernetes.io/name: {{ $name }}
+    helm.sh/chart: {{ $chart }}
+    app.kubernetes.io/instance: {{ $release }}
+    app.kubernetes.io/managed-by: {{ $service }}
+    participant/type: consumer
+    participant/nats: cluster
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ $name }}
+      app.kubernetes.io/instance: {{ $release }}
+      participant/type: consumer
+      participant/nats: cluster
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ $name }}
+        app.kubernetes.io/instance: {{ $release }}
+        participant/type: consumer
+        participant/nats: cluster
+      annotations:
+        checksum/config:  {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+    spec:
+      volumes:
+        - name: config
+          configMap:
+            name: {{ $fullname }}
+    {{- if .Values.extraVolumes }}
+{{ toYaml .Values.extraVolumes | indent 8 }}
+    {{- end }}
+      containers:
+        - name: {{ .Chart.Name }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - name: CONFIG_DIR
+              value: /etc/config
+            {{- if $config.trace.enabled }}
+              {{/* TODO: configure trace agent's port */}}
+            {{- end }}
+            {{/* TODO: resolve database secrets as environment variables refered to by the application config */}}
+            - name: PG_USER
+              value: {{ .Values.postgresql.postgresqlUsername }}
+            - name: PG_PASSWORD
+              value: {{ .Values.postgresql.postgresqlPassword }}
+            {{- if .Values.dumpConfig }}
+            - name: DUMP_CONFIG
+              value: "1"
+            {{- end }}
+          args:
+            - daemon
+            - consumer
+            - --participant-id
+            - {{ index .Values.consumer.participants 1 }}
+            - --nats-cluster
+            - {{ .Values.nats.cluster }}
+            - --nats-url
+            - nats://0.0.0.0:{{.Values.nats.port}}
+            - --nats-cluster-url
+            - nats://0.0.0.0:{{.Values.nats.clusterPort}}
+            - --nats-cluster-headless-service
+            - '{{ include "app.fullname" . }}-cluster'
+            {{- if .Values.extraArgs }}
+{{ toYaml .Values.extraArgs | indent 12 }}
+            {{- end }}
+          ports:
+            - name: nats
+              containerPort: {{.Values.nats.port}}
+              protocol: TCP
+            - name: cluster
+              containerPort: {{.Values.nats.clusterPort}}
+              protocol: TCP
+          volumeMounts:
+            - mountPath: /etc/config
+              name: config
+          {{- if .Values.extraVolumeMounts }}
+{{ toYaml .Values.extraVolumeMounts | indent 12 }}
+          {{- end }}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: {{ .Values.nats.monitorPort }}
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: {{ .Values.nats.monitorPort }}
+            periodSeconds: 5
+          resources:
+{{ toYaml .Values.resources | indent 12 }}
+    {{- with .Values.nodeSelector }}
+      nodeSelector:
+{{ toYaml . | indent 8 }}
+    {{- end }}
+    {{- with .Values.affinity }}
+      affinity:
+{{ toYaml . | indent 8 }}
+    {{- end }}
+    {{- with .Values.tolerations }}
+      tolerations:
+{{ toYaml . | indent 8 }}
+    {{- end }}

@@ -1,0 +1,46 @@
+image:
+  repository: fredbi/daemon  # <- image loaded in local registry
+  tag: latest
+  pullPolicy: IfNotPresent   # <- manually load images in minikube with "minikube image load ..."
+
+producer:
+  service:
+    type: ClusterIP
+    port: 9090  # <- HTTP API to submit messages
+  # configure one API producer participant
+  participants:
+    - P1
+
+consumer:
+  # configure 2 consumer participants
+  participants:
+    - BNPAFRPH
+    - AGRIFRPP
+
+nats:
+  cluster: demo      # <- cluster name shared by all participants
+  port: 4222         # <- NATS port
+  clusterPort: 5333  # <- NATS cluster advertising port
+  monitorPort: 6333  # <- healthcheck for the cluster headless service
+
+
+replicaCount: 2      # <- all deployments for participants run on 2 pods
+nodeSelector: {}
+affinity: {}
+tolerations: []
+
+dumpConfig: false
+
+config: |
+  trace:
+    enabled: false
+
+postgresql:          # <- configure the bitnami chart for postgres
+  auth:
+    username: dbuser
+    password: secret
+    database: messagedb
+  persistence:
+    existingClaim: postgresql-pv-claim
+  volumePermissions:
+    enabled: true
