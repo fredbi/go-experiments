@@ -58,7 +58,7 @@ func (s MessageStatus) Less(m MessageStatus) bool {
 }
 
 func (s MessageStatus) MarshalText() ([]byte, error) {
-	return []byte(s.String()), nil // TODO: perf, could be preallocated slice
+	return []byte(s.String()), nil // TODO: perf, could be preallocated slice directly in a switch
 }
 
 func (s *MessageStatus) UnmarshalText(data []byte) error {

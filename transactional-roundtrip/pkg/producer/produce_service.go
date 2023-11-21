@@ -27,7 +27,7 @@ type Producer struct {
 	rt                injected.Runtime
 	publishedSubject  func(string) string
 	subscribedSubject string
-	nc                *nats.Conn
+	nc                *nats.Conn // that's the connection to the NATS embedded server. TODO: perf - could use direct in-process connection
 
 	settings
 }
