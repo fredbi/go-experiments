@@ -13,18 +13,21 @@ app:
 nats:
   server:
     clusterId: demo
+    clusterHeadlessService: daemon-nats-bank-cluster.default.svc.cluster.local
+    debug:
+      logs: true
   topics: ~
 
 databases:
   postgres:
     default:
       #url: postgresql://postgres@localhost:5432/messagedb?sslmode=disable # <- local use
-      url: postgresql://daemon-postgresql:5432/messagedb?sslmode=disable   # <- local k8s
-      user: $PG_USER
-      password: $PG_PASSWORD
+      url: postgresql://daemon-postgresql.default.svc.cluster.local:5432/messagedb?sslmode=disable   # <- local k8s
+      user: '$PG_USER'
+      password: '$PG_PASSWORD'
     pgconfig:
       log:
-        level: debug
+        level: warn
 
 log:
   level: debug

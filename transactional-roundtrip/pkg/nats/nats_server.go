@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/url"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/fredbi/go-experiments/transactional-roundtrip/pkg/injected"
@@ -18,8 +19,11 @@ import (
 )
 
 type Server struct {
-	rt injected.Runtime
-	ns *server.Server
+	rt          injected.Runtime
+	ns          *server.Server
+	needReloads bool
+	reloadDone  chan struct{}
+	reloadWg    *sync.WaitGroup
 
 	Settings
 }
@@ -56,13 +60,14 @@ func (s *Server) Start() error {
 	}
 
 	natsOptions := &server.Options{
-		ServerName: fmt.Sprintf("embedded-%s", s.rt.ID()),
-		Host:       host,
-		Port:       port,
-		NoLog:      !(s.Server.Debug.Logs || s.Server.Debug.Debug || s.Server.Debug.Trace),
-		Debug:      s.Server.Debug.Debug,
-		Trace:      s.Server.Debug.Trace,
-		HTTPPort:   s.Server.MonitorHTTPPort,
+		ServerName:   fmt.Sprintf("embedded-%s", s.rt.ID()),
+		Host:         host,
+		Port:         port,
+		NoLog:        !(s.Server.Debug.Logs || s.Server.Debug.Debug || s.Server.Debug.Trace),
+		Debug:        s.Server.Debug.Debug,
+		Trace:        s.Server.Debug.Trace,
+		HTTPPort:     s.Server.MonitorHTTPPort,
+		HTTPBasePath: "/probe",
 	}
 
 	if c.Server.ClusterID != "" {
@@ -106,16 +111,23 @@ func (s *Server) Start() error {
 			natsOptions.Routes = routeURLs
 
 		case c.Server.ClusterHeadlessService != "":
+			// headless service may not be ready at startup time, so initial route setup should be
+			// non-blocking and provided later on, dynamically.
+			//
 			// we assume that when running from a headless service, all advertised cluster endpoints run on the same port
+			s.needReloads = true
 			natsOptions.Routes, err = s.discoverIPs(c.Server.ClusterHeadlessService, natsOptions.Cluster.Port, clusterURL.User)
 			if err != nil {
-				return err
+				lg.Warn("headless service discovery not available yet", zap.Error(err))
+
+				return nil
 			}
 			natsOptions.RoutesStr = ""
 
 		default:
 			return errors.New("when running a cluster, you must specify a way to discover the other cluster members: either with explicit routes or a headless service")
 		}
+		lg.Debug("nats server options", zap.Any("nats_options", natsOptions))
 
 		lg.Info("NATS clustering enabled",
 			zap.String("cluster_id", natsOptions.Cluster.Name),
@@ -137,6 +149,41 @@ func (s *Server) Start() error {
 		return fmt.Errorf("NATS server startup timed out at %s", c.URL)
 	}
 
+	if s.needReloads {
+		s.reloadDone = make(chan struct{})
+		var wg sync.WaitGroup
+		s.reloadWg = &wg
+		clusterURL, _ := url.Parse(c.Server.ClusterURL)
+
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+
+			ticker := time.NewTicker(10 * time.Second)
+			defer ticker.Stop()
+
+			for {
+				select {
+				case <-s.reloadDone:
+					return
+				case <-ticker.C:
+					natsOptions.Routes, err = s.discoverIPs(c.Server.ClusterHeadlessService, natsOptions.Cluster.Port, clusterURL.User)
+					if err != nil {
+						lg.Warn("headless service discovery not available yet", zap.Error(err))
+
+						return
+					}
+					natsOptions.RoutesStr = ""
+					lg.Debug("headless service discovery found routes", zap.Any("routes", natsOptions.Routes))
+
+					if err := s.ns.ReloadOptions(natsOptions); err != nil {
+						lg.Warn("headless service discovery reloaded wrong server settings", zap.Error(err))
+					}
+				}
+			}
+		}()
+	}
+
 	lg.Info("NATS server started",
 		zap.Stringer("url", u),
 	)
@@ -146,10 +193,22 @@ func (s *Server) Start() error {
 
 func (s *Server) Stop() error {
 	if s.ns != nil {
+		s.stopReloader()
 		s.ns.WaitForShutdown()
 	}
 
 	return nil
+}
+
+func (s *Server) stopReloader() {
+	if !s.needReloads {
+		return
+	}
+
+	close(s.reloadDone)
+
+	s.reloadWg.Wait()
+
 }
 
 func (s Server) discoverIPs(svc string, port int, userinfo *url.Userinfo) ([]*url.URL, error) {
@@ -157,7 +216,7 @@ func (s Server) discoverIPs(svc string, port int, userinfo *url.Userinfo) ([]*ur
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	nsRecord, err := resolver.LookupIP(ctx, "ip4", svc)
+	nsRecord, err := resolver.LookupIPAddr(ctx, svc)
 	if err != nil {
 		return nil, err
 	}

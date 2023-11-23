@@ -52,7 +52,7 @@ type (
 		ClusterURL             string
 		ClusterRoutes          string
 		ClusterHeadlessService string
-		MonitorHTTPPort        int
+		MonitorHTTPPort        int // port for monitoring the health status of the server
 		Debug                  ServerDebugSettings
 	}
 

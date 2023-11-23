@@ -72,7 +72,7 @@ spec:
             - --nats-cluster-url
             - nats://0.0.0.0:{{.Values.nats.clusterPort}}
             - --nats-cluster-headless-service
-            - '{{ include "app.fullname" . }}-cluster'
+            - '{{ include "app.fullname" . }}-cluster.{{ $namespace }}.svc.cluster.local'
             {{- if .Values.extraArgs }}
 {{ toYaml .Values.extraArgs | indent 12 }}
             {{- end }}
@@ -91,13 +91,13 @@ spec:
           {{- end }}
           livenessProbe:
             httpGet:
-              path: /healthz
+              path: /probe/healthz
               port: {{ .Values.nats.monitorPort }}
-            initialDelaySeconds: 5
+            initialDelaySeconds: 10
             periodSeconds: 5
           readinessProbe:
             httpGet:
-              path: /healthz
+              path: /probe/healthz
               port: {{ .Values.nats.monitorPort }}
             periodSeconds: 5
           resources:

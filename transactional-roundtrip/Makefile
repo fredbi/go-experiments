@@ -5,13 +5,16 @@ ROOT=$(shell git rev-parse --show-toplevel)/transactional-roundtrip
 DOCKERFILE ?= Dockerfile
 
 # TAG is a sanitized version of the git tag, suitable for use as a docker tag
-TAG ?= $(shell echo $${VERSION:="0.0.0-${COMMIT}"}|sed -E '1,$$s/[^a-zA-Z0-9_\.\-]/_/g'|sed -E '1,$$s/^[^a-zA-Z0-9_]/_/'|cut -c 1-128)
+TAG ?= $(shell RAW=$(VERSION);echo "$${RAW:-0.0.0-$(COMMIT)}"|sed -E '1,$$s/[^a-zA-Z0-9_\.\-]/_/g'|sed -E '1,$$s/^[^a-zA-Z0-9_]/_/'|cut -c 1-128)
 
 include deployment/deploy.mk
 
 cli-doc:
 	cd $(ROOT)/hack && go run gen_cli_doc.go
 
+.PHONY: show-version
+show-version:
+	@echo "Current tag for building: ${TAG}"
 
 .PHONY: all-images
 all-images: image injector-image
@@ -55,6 +58,7 @@ build-image:
 	--sbom=true \
 	--provenance=true \
 	-t fredbi/${APP}:${DOCKER_TAG} \
+	-t fredbi/${APP}:${COMMIT} \
 	-f $(DOCKERFILE) \
 	.
 	

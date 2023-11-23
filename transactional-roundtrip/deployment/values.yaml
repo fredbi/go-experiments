@@ -29,7 +29,7 @@ nodeSelector: {}
 affinity: {}
 tolerations: []
 
-dumpConfig: true
+dumpConfig: false
 
 config: |
   trace:
@@ -37,6 +37,7 @@ config: |
 
 postgresql:          # <- configure the bitnami chart for postgres
   auth:
+    # TODO: replace explicit values by a reference to a k8s secret resource
     username: dbuser
     password: secret
     database: messagedb

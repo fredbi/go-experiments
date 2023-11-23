@@ -218,7 +218,7 @@ func prerun(c *cobra.Command, _ []string) error {
 	// 3. Database
 	// Create DB if needed
 	// NOTE: this is transactional, so only the first started deployment will get there.
-	db, _, err := pgrepo.EnsureDB(ctx, cfg, zlg, pgrepo.DefaultDB)
+	db, created, err := pgrepo.EnsureDB(ctx, cfg, zlg, pgrepo.DefaultDB)
 	if err != nil {
 		return err
 	}
@@ -226,6 +226,10 @@ func prerun(c *cobra.Command, _ []string) error {
 		// scratch this pool after the migrations have completed
 		_ = db.Close()
 	}()
+
+	if !created {
+		lg.Info("database exists")
+	}
 
 	// 4. Apply DB migrations
 	rt := runtime{db: db, logger: log.NewFactory(zlg), cfg: cfg}

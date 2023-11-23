@@ -11,8 +11,9 @@ Various utility packages:
 * [x] audit trail of failures (for tests) saved by MessageProcessor
 * [x] message injection CLI
 * kubernetes deployment:
-  - deployment n replicas for 1 producer
-  - 1 deployment p replicate for consumer FRPP
-  - 1 deployment p' replicate for consumer FRBNP (IBAN prefix)
+  - [x] deployment n replicas for 1 producer
+  - [x] 1 deployment p replicate for consumer FRPP
+  - [x] 1 deployment p' replicate for consumer FRBNP (IBAN prefix)
   - 1 job for injector
-
+* gooseplus errors: first time (ensure goose version), next: cannot acquire lock
+* pgrepo errors: context already done
