@@ -14,6 +14,13 @@ Various utility packages:
   - [x] deployment n replicas for 1 producer
   - [x] 1 deployment p replicate for consumer FRPP
   - [x] 1 deployment p' replicate for consumer FRBNP (IBAN prefix)
-  - 1 job for injector
+  - [ ] 1 job for injector
+* [x] nats embedded logs not available
+* [x] nats embedded monitoring not working
+* [x] check headless service resolve w/ selectors: ok
+* [x] nslookup of headless service not working
 * gooseplus errors: first time (ensure goose version), next: cannot acquire lock
-* pgrepo errors: context already done
+* [x] pgrepo errors: context already done -> more initial probe?
+* structured logging for NATS embedded server
+* pubsub client as an interface for testability
+* version chart for helm releases

@@ -29,6 +29,10 @@ nodeSelector: {}
 affinity: {}
 tolerations: []
 
+probes:
+  initialDelaySeconds: 20  # <- on a test deployment, the Postgres statefulset takes a little time to start
+  periodSeconds: 5
+
 dumpConfig: false
 
 config: |

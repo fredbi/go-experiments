@@ -15,6 +15,19 @@ import (
 	"go.uber.org/zap"
 )
 
+// registerAPIRoutes adds all the http routes for the API handler
+func (p Producer) registerAPIRoutes(router chi.Router) {
+	router.Route("/", func(r chi.Router) {
+		r.Post("/message", p.createMessage)
+		r.Get("/message/{id}", p.getMessage)
+		r.Get("/messages", p.listMessages)
+	})
+	router.Route("/probe", func(r chi.Router) {
+		r.Get("/healthz", p.healthcheck)
+		r.Get("/readyz", p.healthcheck)
+	})
+}
+
 func (p Producer) createMessage(w http.ResponseWriter, r *http.Request) {
 	parentCtx := r.Context()
 	_, span, lg := tracer.StartSpan(parentCtx, p)
@@ -39,7 +52,7 @@ func (p Producer) createMessage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (p Producer) healthcheck(w http.ResponseWriter, _ *http.Request) {
-	w.Write([]byte("pass"))
+	_, _ = w.Write([]byte("pass"))
 }
 
 func (p Producer) getMessage(w http.ResponseWriter, r *http.Request) {

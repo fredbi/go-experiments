@@ -13,9 +13,9 @@ app:
 nats:
   server:
     clusterId: demo
-    clusterHeadlessService: daemon-nats-bank-cluster.default.svc.cluster.local
+    clusterHeadlessService: daemon-nats-bank-cluster.default.svc.cluster.local  # <- NATS cluster discovery routes
     debug:
-      logs: true
+      logs: false # <- logs NAT embedded server
   topics: ~
 
 databases:
@@ -25,9 +25,10 @@ databases:
       url: postgresql://daemon-postgresql.default.svc.cluster.local:5432/messagedb?sslmode=disable   # <- local k8s
       user: '$PG_USER'
       password: '$PG_PASSWORD'
-    pgconfig:
-      log:
-        level: warn
+  pgconfig: # <- default config for DB pool
+    log:
+      level: warn
+    pingTimeout: 15s
 
 log:
   level: debug

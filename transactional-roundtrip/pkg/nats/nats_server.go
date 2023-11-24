@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"os"
 	"strconv"
 	"sync"
 	"time"
@@ -24,6 +25,7 @@ type Server struct {
 	needReloads bool
 	reloadDone  chan struct{}
 	reloadWg    *sync.WaitGroup
+	mx          sync.Mutex
 
 	Settings
 }
@@ -59,8 +61,13 @@ func (s *Server) Start() error {
 		return err
 	}
 
+	pod, err := os.Hostname()
+	if err != nil {
+		return fmt.Errorf("could not resolve hostname: %w", err)
+	}
+
 	natsOptions := &server.Options{
-		ServerName:   fmt.Sprintf("embedded-%s", s.rt.ID()),
+		ServerName:   fmt.Sprintf("embedded-%s-%s", s.rt.ID(), pod), // must be unique, so we include the pod's hostname
 		Host:         host,
 		Port:         port,
 		NoLog:        !(s.Server.Debug.Logs || s.Server.Debug.Debug || s.Server.Debug.Trace),
@@ -115,12 +122,12 @@ func (s *Server) Start() error {
 			// non-blocking and provided later on, dynamically.
 			//
 			// we assume that when running from a headless service, all advertised cluster endpoints run on the same port
+			lg.Debug("starting headless service discovery", zap.String("headless_service", c.Server.ClusterHeadlessService))
 			s.needReloads = true
-			natsOptions.Routes, err = s.discoverIPs(c.Server.ClusterHeadlessService, natsOptions.Cluster.Port, clusterURL.User)
+
+			natsOptions.Routes, err = discoverIPs(c.Server.ClusterHeadlessService, natsOptions.Cluster.Port, clusterURL.User)
 			if err != nil {
 				lg.Warn("headless service discovery not available yet", zap.Error(err))
-
-				return nil
 			}
 			natsOptions.RoutesStr = ""
 
@@ -141,6 +148,7 @@ func (s *Server) Start() error {
 		return err
 	}
 
+	s.ns = ns
 	ns.ConfigureLogger()
 
 	go ns.Start()
@@ -150,38 +158,7 @@ func (s *Server) Start() error {
 	}
 
 	if s.needReloads {
-		s.reloadDone = make(chan struct{})
-		var wg sync.WaitGroup
-		s.reloadWg = &wg
-		clusterURL, _ := url.Parse(c.Server.ClusterURL)
-
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-
-			ticker := time.NewTicker(10 * time.Second)
-			defer ticker.Stop()
-
-			for {
-				select {
-				case <-s.reloadDone:
-					return
-				case <-ticker.C:
-					natsOptions.Routes, err = s.discoverIPs(c.Server.ClusterHeadlessService, natsOptions.Cluster.Port, clusterURL.User)
-					if err != nil {
-						lg.Warn("headless service discovery not available yet", zap.Error(err))
-
-						return
-					}
-					natsOptions.RoutesStr = ""
-					lg.Debug("headless service discovery found routes", zap.Any("routes", natsOptions.Routes))
-
-					if err := s.ns.ReloadOptions(natsOptions); err != nil {
-						lg.Warn("headless service discovery reloaded wrong server settings", zap.Error(err))
-					}
-				}
-			}
-		}()
+		s.startReloader(*natsOptions)
 	}
 
 	lg.Info("NATS server started",
@@ -200,6 +177,71 @@ func (s *Server) Stop() error {
 	return nil
 }
 
+// startReloader hot-reloads the server whenever the headless service changes configuration
+func (s *Server) startReloader(natsOptions server.Options) {
+	lg := s.rt.Logger().Bg()
+	s.reloadDone = make(chan struct{})
+	var wg sync.WaitGroup
+	s.reloadWg = &wg
+	clusterURL, _ := url.Parse(s.Settings.Server.ClusterURL)
+	pollInterval := 10 * time.Second
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+
+		ticker := time.NewTicker(pollInterval)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-s.reloadDone:
+				return
+			case <-ticker.C:
+				var err error
+				newOptions := natsOptions
+				newOptions.Routes, err = discoverIPs(s.Settings.Server.ClusterHeadlessService, newOptions.Cluster.Port, clusterURL.User)
+				if err != nil {
+					lg.Warn("headless service discovery not available yet", zap.Duration("retry_in", pollInterval), zap.Error(err))
+
+					break
+				}
+				newOptions.RoutesStr = ""
+
+				if !hasNewRoute(natsOptions.Routes, newOptions.Routes) {
+					return
+				}
+
+				lg.Debug("reload NATS server with new routes", zap.Stringers("routes", newOptions.Routes))
+				s.mx.Lock()
+				natsOptions = newOptions
+				s.mx.Unlock()
+
+				if err := s.ns.ReloadOptions(&newOptions); err != nil {
+					lg.Warn("headless service discovery reloaded wrong server settings", zap.Error(err))
+				}
+			}
+		}
+	}()
+
+	lg.Info("started headless service polling", zap.Duration("polling_interval", pollInterval))
+}
+
+func hasNewRoute(previous, current []*url.URL) bool {
+	prevIdx := make(map[string]struct{}, len(previous))
+	for _, route := range previous {
+		prevIdx[route.String()] = struct{}{}
+	}
+
+	for _, route := range current {
+		if _, ok := prevIdx[route.String()]; !ok {
+			return true
+		}
+	}
+
+	return false
+}
+
 func (s *Server) stopReloader() {
 	if !s.needReloads {
 		return
@@ -209,35 +251,6 @@ func (s *Server) stopReloader() {
 
 	s.reloadWg.Wait()
 
-}
-
-func (s Server) discoverIPs(svc string, port int, userinfo *url.Userinfo) ([]*url.URL, error) {
-	resolver := net.DefaultResolver
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	nsRecord, err := resolver.LookupIPAddr(ctx, svc)
-	if err != nil {
-		return nil, err
-	}
-
-	urls := make([]*url.URL, 0, len(nsRecord))
-
-	for _, addr := range nsRecord {
-		u := &url.URL{
-			Scheme: "nats",
-			Host:   fmt.Sprintf("%v:%d", addr, port),
-			User:   userinfo,
-		}
-		urls = append(urls, u)
-	}
-
-	filtered, err := server.RemoveSelfReference(port, urls)
-	if err != nil {
-		return nil, err
-	}
-
-	return filtered, nil
 }
 
 var p = &tracecontext.HTTPFormat{}
@@ -254,4 +267,77 @@ func SpanContextFromHeaders(parentCtx context.Context, msg *nats.Msg) context.Co
 	ctx, _ := trace.StartSpanWithRemoteParent(parentCtx, "incoming NATS message", spanCtx)
 
 	return ctx
+}
+
+// discoverIPs performs a DNS reverse-lookup on the headless service to collect the IP addresses of
+// the cluster group.
+func discoverIPs(svc string, port int, userinfo *url.Userinfo) ([]*url.URL, error) {
+	resolver := net.DefaultResolver
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	nsRecord, err := resolver.LookupHost(ctx, svc)
+	if err != nil {
+		return nil, err
+	}
+
+	localIPs, err := getInterfaceIPs()
+	if err != nil {
+		return nil, err
+	}
+
+	nsRecord = filterIPInList(nsRecord, localIPs)
+
+	urls := make([]*url.URL, 0, len(nsRecord))
+
+	for _, addr := range nsRecord {
+		u := &url.URL{
+			Scheme: "nats",
+			Host:   fmt.Sprintf("%v:%d", addr, port),
+			User:   userinfo,
+		}
+		urls = append(urls, u)
+	}
+
+	return urls, nil
+}
+
+func filterIPInList(unfiltered, filter []string) []string {
+	filtered := make([]string, 0, len(unfiltered))
+	for _, ip1 := range unfiltered {
+		found := false
+		for _, ip2 := range filter {
+			if ip1 == ip2 {
+				found = true
+
+				break
+			}
+		}
+		if found {
+			continue
+		}
+
+		filtered = append(filtered, ip1)
+	}
+
+	return filtered
+}
+
+func getInterfaceIPs() ([]string, error) {
+	var localIPs []string
+
+	interfaceAddr, err := net.InterfaceAddrs()
+	if err != nil {
+		return nil, fmt.Errorf("error getting self referencing address: %v", err)
+	}
+
+	for i := 0; i < len(interfaceAddr); i++ {
+		interfaceIP, _, _ := net.ParseCIDR(interfaceAddr[i].String())
+		if net.ParseIP(interfaceIP.String()) != nil {
+			localIPs = append(localIPs, interfaceIP.String())
+		} else {
+			return nil, fmt.Errorf("error parsing self referencing address: %v", err)
+		}
+	}
+	return localIPs, nil
 }

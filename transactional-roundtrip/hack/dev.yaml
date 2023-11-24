@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: fred-dev
+spec:
+  containers:
+    - name: dev
+      image: golang:alpine
+      tty: true
+      stdin: true
+  nodeSelector: ~
+  tolerations: ~
+  affinity: {}
+
+

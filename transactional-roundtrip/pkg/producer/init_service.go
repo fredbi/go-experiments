@@ -149,18 +149,13 @@ func (p *Producer) startHTTPHandler(ctx context.Context) error {
 	lg := p.rt.Logger().For(ctx).With(zap.String("operation", "start_http_handler"))
 
 	router := chi.NewRouter()
+
+	// register a middleware stack
 	router.Use(middleware.Recoverer)
 	router.Use(tracer.Middleware())
 	router.Use(logmiddleware.LogRequests(p.rt.Logger()))
-	router.Route("/", func(r chi.Router) {
-		r.Post("/message", p.createMessage)
-		r.Get("/message/{id}", p.getMessage)
-		r.Get("/messages", p.listMessages)
-	})
-	router.Route("/probe", func(r chi.Router) {
-		r.Get("/healthz", p.healthcheck)
-		r.Get("/readyz", p.healthcheck)
-	})
+
+	p.registerAPIRoutes(router)
 
 	addr := ":" + strconv.Itoa(p.Producer.API.Port)
 	lg.Info("listening on", zap.String("endpoint", addr))
