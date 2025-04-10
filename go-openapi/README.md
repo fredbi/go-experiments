@@ -60,6 +60,8 @@ Well, overall we have kept this compass, even though there are a few departures 
 * customizing `go-swagger` is hard
 * using custom `format`s (e.g. custom `strfmt` types) is hard
 
+The main problem I see with this approach, which I've totally supported so far, is that it tends to result in a project where experts talk to experts only.
+Many less experienced developers have been struggling.
 Essentially, there are a lot of jewels here and there. What I'd like to do (and am currently doing on some parts) is to split apart
 a lot of those. Since keeping backward compatibility is important, this is primarily achieved by moving various sub-packages into modules.
 
@@ -104,15 +106,17 @@ dynamically based on the JSON spec, without any generated code. More explanation
 
 Real-world issues we faced with this are intimately bound to the design choices of the go language regarding data structures vs json.
 
-In a nutshell:
+Main issues in a nutshell:
 
 * handling `null` JSON values
 * checking for json schema `required`
 * forced trade-offs when deciding to use pointers rather than values in receiver go types
+* problems to keep the order of keys when generating specs, doc and basically everything where the author intended to see things appear in a given order
 * couldn't keep up with the creativity of the json schema committee, who have introduced many major evolutions since v4
 * couldn't keep up with generalized usage of $ref's in specs, untyped things in unexpected places (such as extension tags, ...)
 * dealing with union types (e.g. jsonschema declarations such as `type: [...]`, `anyOf`, `oneOf`, `allOf`, or the swagger v2 peculiar way
  of supporting inheritance.
+* degraded performances when doing anything (including running the generated API) with the standard lib
 
 Rest assured: the toolkit works and covers most "sound" use cases. The issue with this design approach is that it sets a "glass ceiling"
 and some niche use cases or edge cases are very hard
@@ -176,19 +180,23 @@ As a maintainer and user, I've hit the following issues and raised the following
   1. Many smart things that have been polished after countless bug fixes and edge case reports should be factorized,
      e.g. name mangling subtleties reinjected into `swag/mangling`
   2. The template repo is another smart thing that should be factored out (and deserves to be maintained/improved/enriched in its own right)
-  3. More `contrib` codegen alternatives should be added. The `stratoscale` approach was great, but came out as a single shot, unfortunately.
+  3. More `contrib` codegen alternatives should be added. The `Stratoscale` approach was great but came out as a single shot, unfortunately.
      Perhaps it is just too hard currently to deal with custom templating.
   4. The analysis of swagger types is a bit confusing: using `analysis` was the goal, but instead we get a type resolver that is super-difficult to follow
-  5. Model construction is super-hard to follow. Almost nobody dares messing with that part nowadays.
+  5. Model construction is super hard to follow. Almost nobody dares to mess with that part nowadays.
   6. codegen is very difficult to test and test code coverage is not very significant (regarding templates). We test "expected generated code" and only on a few occasions the actual behavior of the generated program.
      All this testing is fine but eventually, it made the product more and more rigid as testing against expected generated statements generates a lot
      of impacts on tests even with minor changes in templates
-
+  7. Hit a hard limit of the design when it comes to addressing fringe/edge cases such as polymorphism (only works with vanilla models),
+     using fewer pointers (you don't really have a choice)
+  8. Confusing pointer/not pointer conventions as it depends on the type: parameters are nullable whenever not required (so you may check whether they were present or not)
+     but schema types are nullable whenever they are required (because validation is carried out after unmarshaling).
+     It gets even more complicated when playing around with the few options available like omitempty and x-nullable.
 * code scan
   1. The main hypothesis is that code compiles so that we may analyze an AST. So far so good, but said AST is internally highly dependent on the go version used.
      Even though the introduction of "go toolchain" versioning significantly improved things, this is still fragile.
-  2. The other main design of that part is that a lot of information is passed through formatted comments. Maybe too much as a matter of facts.
-  3. Comment parsing relies on regexp'es and is difficult to follow.
+  2. The other main design of that part is that a lot of information is passed through formatted comments. Maybe too much as a matter of fact.
+  3. Comment parsing relies on regexp'es and is (very) difficult to follow.
   4. It is very difficult to test
   5. It is poorly tested and test code coverage is not significant at all
  
