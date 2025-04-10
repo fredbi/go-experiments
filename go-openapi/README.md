@@ -2,7 +2,7 @@
 
 This year (2025), the `go-openapi` initiative is now 10 years old...
 
-As a contributor to this project over the past, ahem, 8 years or so, I believe it is time for a retrospective and honest criticism.
+As a contributor to this project over the past, ahem, 8 years or so, it is time for a retrospective and honest criticism.
 
 Contributing to this vast project has been an exhilarating experience. So many jewels accumulated, such a vast collection of feedback and
 developer's experience accumulated... It would be such a waste just to throw away or archive for good such an accumulation of knowledge.
@@ -38,7 +38,7 @@ A quick keep/change-like analysis of the various tools that have been introduced
 | runtime       | The runtime for client and server | barely changed | Y | major split |
 | spec          | A type for swagger specs          | only technical changes recently | N | change concept |
 | spec3         | An attempt to support OAI v3      | not complete - given up | N | change concept | 
-| strfmt        | Types to support swagger "format"s | issue with dependencies (e.g. mongodb) | Y | major split |
+| strfmt        | Types to support swagger "format"s | issue with dependencies (e.g. MongoDB) | Y | major split |
 | stubs         | A test cases/examples generator    | never completed | Y | rewrite |
 | swag          | A bag of tools           | being split | move mangling away, reduce API surface |
 | swaggersocket | An example demonstrating streaming | not maintained | N | new repo to collect examples |
@@ -65,7 +65,7 @@ a lot of those. Since keeping backward compatibility is important, this is prima
 
 This would lead to either new go-openapi repos or muti-modules mono-repos with the existing ones (ex: `swag` or `strfmt`).
 
-I am currently working at "salvaging" a few such nice bits of code by refactoring actions. A humble improvement, but hopefully it could help some future,
+I am currently working at "salvaging" a few such nice bits of code by refactoring actions. A humble improvement, but hopefully it could help in some future,
 more ambitious endeavor.
 
 ### json
@@ -132,7 +132,7 @@ In no particular order:
 * language-agnostic / support other target languages
 * XML support
 * ready-to-use streaming support
-* workable multiple MIME type support
+* workable multiple MIME-type support
 * full support for OAIv2 "polymorphic types" (now deprecated in OAIv3)
 * ready-to-use authentication middleware
 * ...
@@ -149,12 +149,23 @@ Trying to be honest here: a little self-criticism doesn't hurt :).
 > the other way around: generating spec from code, which I have never personally used and barely contributed to.
 
 Let's start with some positive assessment. I see many major successes:
-* ...
+
+* Supports _almost_ everything dealing with OAIv2, only fringe use cases remain poorly supported
+* Distributed for many platforms as binary releases and docker images
+* Generated code is not too bad, it is way better than anything you may get from swagger-codegen
+* Spec generation is still a popular use case, and is unique (afaik) in the golang space
+* Once well-understood it is highly customizable
+* There are a lot of useful features like spec validation, mixin, diffing, flattening, ...
+* Model generation brings a lot of features like embedding custom types, etc
+* Code is well-covered by a lot of unit tests, there are also a lot of integration tests
+* A large documentation set is available
 
 The main issue is the lack of OAIv3 support. That's a killer one.
+
 Unfortunately, my response to that one is kind of diluted all over this note.
-In order to move there, there are so many things that need to be reviewed and improved.
-As a maintainer and user, I've hit the following issues / identified the following criticisms:
+To move up to that stage, there are so many things that need to be reviewed and improved.
+
+As a maintainer and user, I've hit the following issues and raised the following criticisms:
 * CLI
   1. the main intent of the tool is to provide a CLI, but there are too many built-in features
   2. the tool is highly customizable, but documentation about how to do so is scarce
@@ -167,10 +178,28 @@ As a maintainer and user, I've hit the following issues / identified the followi
   2. The template repo is another smart thing that should be factored out (and deserves to be maintained/improved/enriched in its own right)
   3. More `contrib` codegen alternatives should be added. The `stratoscale` approach was great, but came out as a single shot, unfortunately.
      Perhaps it is just too hard currently to deal with custom templating.
-  4. The analysis of swagger types
+  4. The analysis of swagger types is a bit confusing: using `analysis` was the goal, but instead we get a type resolver that is super-difficult to follow
+  5. Model construction is super-hard to follow. Almost nobody dares messing with that part nowadays.
+  6. codegen is very difficult to test and test code coverage is not very significant (regarding templates). We test "expected generated code" and only on a few occasions the actual behavior of the generated program.
+     All this testing is fine but eventually, it made the product more and more rigid as testing against expected generated statements generates a lot
+     of impacts on tests even with minor changes in templates
 
 * code scan
+  1. The main hypothesis is that code compiles so that we may analyze an AST. So far so good, but said AST is internally highly dependent on the go version used.
+     Even though the introduction of "go toolchain" versioning significantly improved things, this is still fragile.
+  2. The other main design of that part is that a lot of information is passed through formatted comments. Maybe too much as a matter of facts.
+  3. Comment parsing relies on regexp'es and is difficult to follow.
+  4. It is very difficult to test
+  5. It is poorly tested and test code coverage is not significant at all
+ 
+* releases
+  1. The pace of releases has slowed down to almost a halt, perhaps once a year.
+ 
 ### analysis
+
+* spec flattening (i.e. bundling remote schema documents into a single root document) is a very complex. Much more than it should be at least
+* the analyzer is actuall
+* 
 ### errors
 ### inflect
 ### jsonpointer & jsonreference
