@@ -5,20 +5,22 @@ This year (2025), the `go-openapi` initiative is now 10 years old...
 As a contributor to this project over the past, ahem, 8 years or so, it is time for a retrospective and honest criticism.
 
 Contributing to this vast project has been an exhilarating experience. So many jewels accumulated, such a vast collection of feedback and
-developer's experience accumulated... It would be such a waste just to throw away or archive for good such an accumulation of knowledge.
+developer's experience accumulated...
 
-On the other hand, it is just a fact that any major refactoring effort would require a great deal of development, testing, etc.
-Since the days of the project gathering dozens of developers are long gone, deciding to dive in and start such a daunting task is not easy.
+It would be such a waste just to throw away or archive for good such an accumulation of knowledge.
 
-My point here is to try and understand how to move forward, somehow reinvigorate the project with fresh views, and perhaps, deliver to the
-golang community better tooling to produce nice APIs.
+> On the other hand, it is just a fact that any major refactoring effort would require a great deal of development, testing, etc.
+> Since the days of the project gathering dozens of developers are long gone, deciding to dive in and start such a daunting task is not easy.
+>
+> My point here is to try and understand how to move forward, somehow reinvigorate the project with fresh views, and perhaps, deliver to the
+> golang community better tooling to produce nice APIs.
 
 The main and most awaited feature is support for OpenAPI v3 (aka OAIv3) or even v4. But many Bothans died trying to do so... it is a _huge_ amount of work ahead.
 
 In the sections below, I am giving a more comprehensive analysis. Even though OAIv3 is the ultimate goal, it is not the only one and many micro-designs need
 to be questioned, reviewed, and implemented along the way.
 
-## go-swagger and the go-openapi toolkit
+## go-swagger and the go-openapi toolkit status in a nutshell
 
 A quick keep/change-like analysis of the various tools that have been introduced.
 
@@ -50,25 +52,28 @@ A quick keep/change-like analysis of the various tools that have been introduced
 
 The `go-openapi` project was designed as a toolkit rather than a framework.
 
-The project provides basic tooling, holding as little opinion as possible,
-which allows scaffolding custom solutions based on the OpenAPI standard.
-
+The project provides basic tooling, holding as little opinion as possible, which allows scaffolding custom solutions based on the OpenAPI standard.
 The `go-openapi` repos have never been intended to expose a turnkey, out-of-the-box universal framework.
-
 Well, overall we have kept this compass, even though there are a few departures from this concept, such as:
-* the `runtime` component has grown too much into a hard-to-maintain monolithic middleware (see below [runtime](#runtime)
+
+* the `runtime` component has grown too much into a hard-to-maintain monolithic middleware (see below [runtime](#runtime))
 * customizing `go-swagger` is hard
 * using custom `format`s (e.g. custom `strfmt` types) is hard
 
-The main problem I see with this approach, which I've totally supported so far, is that it tends to result in a project where experts talk to experts only.
-Many less experienced developers have been struggling.
-Essentially, there are a lot of jewels here and there. What I'd like to do (and am currently doing on some parts) is to split apart
-a lot of those. Since keeping backward compatibility is important, this is primarily achieved by moving various sub-packages into modules.
+The main problem I see with this approach, which I've largely supported so far, is that it tends to result in a project where experts talk to experts only.
+Many less experienced developers have been struggling with our code base. Sadly, we missed a lot of contributions because of this.
+Simplification has become an acute challenge. This is true for our codebase in general, our package APIs as well as our user interfaces (CLI, documentation).
 
-This would lead to either new go-openapi repos or muti-modules mono-repos with the existing ones (ex: `swag` or `strfmt`).
+#### Approach to refactoring
 
-I am currently working at "salvaging" a few such nice bits of code by refactoring actions. A humble improvement, but hopefully it could help in some future,
-more ambitious endeavor.
+There are a lot of jewels here and there. What I'd like to do is to split them apart.
+I am currently working at "salvaging" a few such nice bits of code by refactoring actions.
+A humble improvement, but hopefully it could help in a future more ambitious endeavor.
+
+Since keeping backward compatibility is important, this is primarily achieved by moving various sub-packages into modules.
+This would eventually lead to either new go-openapi repos or muti-modules mono-repos with the existing ones (ex: `swag` or `strfmt`).
+
+This is a non-destructive action to preserve and maintain some features. This is no silver bullet and nothing major will ever come from this.
 
 ### json
 
@@ -111,7 +116,7 @@ Main issues in a nutshell:
 * handling `null` JSON values
 * checking for json schema `required`
 * forced trade-offs when deciding to use pointers rather than values in receiver go types
-* problems to keep the order of keys when generating specs, doc and basically everything where the author intended to see things appear in a given order
+* problems with keeping the order of keys when generating specs, docs, and basically everything where the author intended to see things appear in a given order
 * couldn't keep up with the creativity of the json schema committee, who have introduced many major evolutions since v4
 * couldn't keep up with generalized usage of $ref's in specs, untyped things in unexpected places (such as extension tags, ...)
 * dealing with union types (e.g. jsonschema declarations such as `type: [...]`, `anyOf`, `oneOf`, `allOf`, or the swagger v2 peculiar way
@@ -123,7 +128,12 @@ and some niche use cases or edge cases are very hard
 
 ### Handling a swagger specification
 
-This is essentially brought by the `spec` package.
+This is essentially supported by the `spec` package.
+
+`spec` exposes the `Spec` type, which knows how to unmarshal and marshal a JSON swagger v2 spec. That's it.
+The `$ref` resolution feature is inside, so the package knows how to fetch remote documents over the network if needed.
+
+Alongside `$ref` resolution comes the `Expand` feature, which expands all `$ref`. The only valid use case to do so is spec and schema validation.
 
 ### Unfinished jobs / unsupported use cases
 
@@ -139,6 +149,7 @@ In no particular order:
 * workable multiple MIME-type support
 * full support for OAIv2 "polymorphic types" (now deprecated in OAIv3)
 * ready-to-use authentication middleware
+* OAI to grpc
 * ...
 
 ## repo by repo analysis
@@ -158,7 +169,8 @@ Let's start with some positive assessment. I see many major successes:
 * Distributed for many platforms as binary releases and docker images
 * Generated code is not too bad, it is way better than anything you may get from swagger-codegen
 * Spec generation is still a popular use case, and is unique (afaik) in the golang space
-* Once well-understood it is highly customizable
+* Once well understood the tool is highly customizable
+* A lot of examples are provided
 * There are a lot of useful features like spec validation, mixin, diffing, flattening, ...
 * Model generation brings a lot of features like embedding custom types, etc
 * Code is well-covered by a lot of unit tests, there are also a lot of integration tests
@@ -184,14 +196,20 @@ As a maintainer and user, I've hit the following issues and raised the following
      Perhaps it is just too hard currently to deal with custom templating.
   4. The analysis of swagger types is a bit confusing: using `analysis` was the goal, but instead we get a type resolver that is super-difficult to follow
   5. Model construction is super hard to follow. Almost nobody dares to mess with that part nowadays.
-  6. codegen is very difficult to test and test code coverage is not very significant (regarding templates). We test "expected generated code" and only on a few occasions the actual behavior of the generated program.
+  6. codegen is very difficult to test and test code coverage is not very significant (regarding templates).
+     We test "expected generated code" and only on a few occasions the actual behavior of the generated program.
      All this testing is fine but eventually, it made the product more and more rigid as testing against expected generated statements generates a lot
      of impacts on tests even with minor changes in templates
-  7. Hit a hard limit of the design when it comes to addressing fringe/edge cases such as polymorphism (only works with vanilla models),
-     using fewer pointers (you don't really have a choice)
-  8. Confusing pointer/not pointer conventions as it depends on the type: parameters are nullable whenever not required (so you may check whether they were present or not)
+  8. Hit hard limits of the design when it comes to addressing fringe/edge cases such as:
+       * polymorphism (only works with vanilla models, would require heavy rework to cover all cases),
+       * using fewer pointers (you currently don't really have a choice)
+       * distinguish empty vs null vs zero value (which is not a natural way of approaching things in go, and rightly so)
+       * advance use cases with `allOf`
+       * inability to evolve (with a reasonable effort) toward supporting `anyOf` or `oneOf`
+  9. Confusing pointer/not pointer conventions as it depends on the type: parameters are nullable whenever not required (so you may check whether they were present or not)
      but schema types are nullable whenever they are required (because validation is carried out after unmarshaling).
      It gets even more complicated when playing around with the few options available like omitempty and x-nullable.
+
 * code scan
   1. The main hypothesis is that code compiles so that we may analyze an AST. So far so good, but said AST is internally highly dependent on the go version used.
      Even though the introduction of "go toolchain" versioning significantly improved things, this is still fragile.
@@ -205,17 +223,57 @@ As a maintainer and user, I've hit the following issues and raised the following
  
 ### analysis
 
-* spec flattening (i.e. bundling remote schema documents into a single root document) is a very complex. Much more than it should be at least
-* the analyzer is actuall
-* 
+* spec flattening (i.e. bundling remote schema documents into a single root document) is very complex. Much more than it should be at least
+* spec flattening started by introducing a lot of other transforms (like renaming things, and reorganizing complex things) which were unrelated to _just_ bundling remote `$ref`
+  in a single document. So we introduced the concept of "minimal flattening" to do just that (yeah it makes things more complicated to explain)...
+* the analyzer is actually not used a lot by go-swagger, not as much as it should at least. In particular go-swagger largely resorts to its type resolve rather than on schema analysis
+
 ### errors
+
 ### inflect
 ### jsonpointer & jsonreference
 ### loads
+
 ### runtime
+
 ### spec & spec3
+
 ### strfmt
 ### stubs
 ### swag
 ### validate
 
+This repo mixes 3 different use cases:
+1. JSON schema validation
+2. swagger v2 spec validation (which relies on JSON schema validation, plus a number of rules)
+3. validation helpers to be used by generated code
+
+## Fresh ideas to move forward
+
+1. Acknowledge the fact that json schema is perhaps not the best choice to accurately specify a serialization format.
+   json schema was designed as a way to express validation constraints, not to specify explicitly a data format.
+   The json schema approach is to derive a data format _implicitly_ from the series of validation constraints that are applied.
+   In practice, constraints are most of the time strong enough to imply a given data type such as a `struct` type. But not always.
+   Think about how you would convert a json schema into a proto buf spec for example. It is harder than it seems.
+3. Abandon the "dynamic JSON" go way of doing things: work with opaque JSON documents that you can navigate (similar to what `gopkg.in/yaml.v3` does)
+   * Stop exposing data objects with exported fields. This has proved to be difficult (or impossible) to maintain over the long run
+   * Stop using go maps to represent objects. The unordered, non-deterministic property of go maps makes them inappropriate for code, spec, or doc generation
+   * Stop using external libraries for the inner workings. easyjson is just fine, but it is not so hard to work out a similar lexing/writing concept, more suited to our
+     JSON spec and schema representation
+4. Abandon the json standard library for all internal codegen/validation/spec gen use cases: use a bespoke json parser to build such JSON document objects
+5. Separate entirely JSON schema support from OpenAPI spec
+   * JSON schema parsing, analysis and validation support independent use cases (beyond APIs): they should be maintainable separately
+   * Similarly, the jsonschema models codegen feature should be usable independently (i.e. no need for an OAI spec)
+6. Since we no longer need to represent a spec or a JSON schema with native go types, we are confident that we can model these with full accuracy, including nulls, huge numbers, etc.
+   Speed is not really an issue at this stage. Accuracy is.
+   Spec analysis should produce a structure akin to an AST, which focuses on describing the source JSON schema structure well, never mixing with requirements from the target codegen language.
+   Example: when analyzing, we should not express a situation like "needs a pointer" or "need to be exported", but rather "can be null", or "can't be null".
+8. Abandon recursive-like, self-described JSON validation. Elegance has been kind of delusional here and ended up with a memory-hungry, slow JSON validator that could only be used
+   for spec validation and not (realistically) when serving untyped API.
+   * Proposed design: after schema analysis ("compile" time) we may produce a closure that more or less wires the validation path efficiently.
+   * Proposed design (meta-schema or spec validation): most of the validation work is done during the analysis stage, which would also raise warnings about legit but unworkable json schema constructs
+9. Analysis should distinguish 2 very different objectives:
+    * analysis with the intent to produce a validator
+    * analysis with the intent to produce code (requires a much deeper understanding to capture the intent of the schema)
+      * at this stage, we may introduce a target-specific analysis. For instance is may be a good idea to know if the "zero value" (a very go-ish idea) is valid to take the right decision.
+      * 
