@@ -5,9 +5,7 @@ This year (2025), the `go-openapi` initiative is now 10 years old...
 As a contributor to this project over the past, ahem, 8 years or so, it is time for a retrospective and honest criticism.
 
 Contributing to this vast project has been an exhilarating experience. So many jewels accumulated, such a vast collection of feedback and
-developer's experience accumulated...
-
-It would be such a waste just to throw away or archive for good such an accumulation of knowledge.
+developer's experience accumulated... It would be such a waste just to throw away or archive for good such an accumulation of knowledge.
 
 > On the other hand, it is just a fact that any major refactoring effort would require a great deal of development, testing, etc.
 > Since the days of the project gathering dozens of developers are long gone, deciding to dive in and start such a daunting task is not easy.
@@ -16,6 +14,7 @@ It would be such a waste just to throw away or archive for good such an accumula
 > golang community better tooling to produce nice APIs.
 
 The main and most awaited feature is support for OpenAPI v3 (aka OAIv3) or even v4. But many Bothans died trying to do so... it is a _huge_ amount of work ahead.
+It requires careful design and planning. The difference is that we've 10 years of accumulated feedback and figuring out different designs.
 
 In the sections below, I am giving a more comprehensive analysis. Even though OAIv3 is the ultimate goal, it is not the only one and many micro-designs need
 to be questioned, reviewed, and implemented along the way.
@@ -209,6 +208,7 @@ As a maintainer and user, I've hit the following issues and raised the following
   9. Confusing pointer/not pointer conventions as it depends on the type: parameters are nullable whenever not required (so you may check whether they were present or not)
      but schema types are nullable whenever they are required (because validation is carried out after unmarshaling).
      It gets even more complicated when playing around with the few options available like omitempty and x-nullable.
+ 10. the mutability of schemas produces subtle bugs and prevents the parallelizing spec processing.
 
 * code scan
   1. The main hypothesis is that code compiles so that we may analyze an AST. So far so good, but said AST is internally highly dependent on the go version used.
@@ -255,15 +255,21 @@ This repo mixes 3 different use cases:
    The json schema approach is to derive a data format _implicitly_ from the series of validation constraints that are applied.
    In practice, constraints are most of the time strong enough to imply a given data type such as a `struct` type. But not always.
    Think about how you would convert a json schema into a proto buf spec for example. It is harder than it seems.
+   In practice, this means that we should allow much more "intent metadata/desired target" input to flow from the developer, which are not part of the spec.
+   This could be configured as rules or as ad-hoc `x-go-*` extensions.
 3. Abandon the "dynamic JSON" go way of doing things: work with opaque JSON documents that you can navigate (similar to what `gopkg.in/yaml.v3` does)
    * Stop exposing data objects with exported fields. This has proved to be difficult (or impossible) to maintain over the long run
    * Stop using go maps to represent objects. The unordered, non-deterministic property of go maps makes them inappropriate for code, spec, or doc generation
    * Stop using external libraries for the inner workings. easyjson is just fine, but it is not so hard to work out a similar lexing/writing concept, more suited to our
-     JSON spec and schema representation
+     JSON spec and schema representation.
+     At the core of the new design, we have a fast JSON parser and document node hierarchy with "verbatim" reproducibility as targets.
+     Documents may share an in-memory "document storage" to function as a cache for remote documents and quick `$ref` resolution.
+     These base components are highly reusable in very different contexts than APIs (e.g. from json linter to json stream parsing).
 4. Abandon the json standard library for all internal codegen/validation/spec gen use cases: use a bespoke json parser to build such JSON document objects
 5. Separate entirely JSON schema support from OpenAPI spec
    * JSON schema parsing, analysis and validation support independent use cases (beyond APIs): they should be maintainable separately
    * Similarly, the jsonschema models codegen feature should be usable independently (i.e. no need for an OAI spec)
+   * JSON schema support is focused on supporting the various versions and flavors of json schema
 6. Since we no longer need to represent a spec or a JSON schema with native go types, we are confident that we can model these with full accuracy, including nulls, huge numbers, etc.
    Speed is not really an issue at this stage. Accuracy is.
    Spec analysis should produce a structure akin to an AST, which focuses on describing the source JSON schema structure well, never mixing with requirements from the target codegen language.
@@ -274,6 +280,80 @@ This repo mixes 3 different use cases:
    * Proposed design (meta-schema or spec validation): most of the validation work is done during the analysis stage, which would also raise warnings about legit but unworkable json schema constructs
 9. Analysis should distinguish 2 very different objectives:
     * analysis with the intent to produce a validator
+      * for instance, this analysis doesn't need to retain metadata (descriptions, `$comment`), it doesn't need to retain the `$ref` structure, ...
+      * this analysis is focused on producing the most efficient path for validation: it may short-circuit redundant validations, pick the best fail-fast path etc
+      * at this stage there is no validator yet: one outcome could be a validator closure, and another one could be a generated validation function
     * analysis with the intent to produce code (requires a much deeper understanding to capture the intent of the schema)
-      * at this stage, we may introduce a target-specific analysis. For instance is may be a good idea to know if the "zero value" (a very go-ish idea) is valid to take the right decision.
-      * 
+      * at this stage, we may introduce a target-specific analysis. For example, it may be a good idea to know if the "zero value" (a very go-ish idea) is valid to take the right decision.
+      * it becomes also interesting to infer the _intent_ that comes with some spec patterns
+10. Codegen should be very explicit about what pertains to the analysis of the source spec (e.g. "this is a polymorphic type", and what pertains to the solution in the target language
+    (e.g. "this is an interface type"). This would make it easier to support alternative solutions to represent the same specification (in this example, the developer might find generated
+    interface types awkward to use and would prefer a composition of concrete types)
+
+### New components to support JSON
+
+The main design goal are:
+
+* to be able to unmarshal and marshal JSON verbatim
+* to support JSON even where native types don't, e.g. non-UTF-8 strings, numbers that overflow float64, null value
+* to be able (on option) to keep an accurate track of the context of an error
+* to drastically reduce the memory needed to process large JSON documents (i.e. ~< 4 GB)
+* to limit garbage collection to a minimum viable level.
+
+#### JSON lexer / parser
+
+* fast, zero-allocation, zero-garbage, limited configurable buffering - but not zero-copy
+* produce accurate tokens with verbatim reproducibility in mind (see also a similar project at golang.org/exp)
+* maintain the context of syntax errors, and the current parsing context to report higher level errors
+* can be used for other things than building documents: parsing or filtering streams, linting json
+* ensure strictness about JSON (parsing numbers, escaping unicode, etc), but may optionally be more lax
+* the primary use case (that guides the optimal path) is buffered JSON, with no assumption about the lifecycle of the buffer (hence copy is needed).
+
+This is similar in design to easyjson jlexer, but with a super reduced API instead: all the information is in the delivered token,
+so you only need to consume tokens to figure out what to do.
+
+Numbers remain strings. Tokens may be converted to numerical types if needed, this is the token consumer's call.
+Similarly, a json writer (again along the same lines as easyjson jwriter) is produced to marshal a stream of tokens into a stream of bytes.
+
+#### JSON document node
+
+A hierarchy of nodes that represent JSON elements organized into arrays and objects in a memory-efficient way.
+
+All these are represented by go slices, not maps: ordering is maintained.
+All scalar content is stored in the document store (see below). Memory storage is shared among documents with similar content.
+In particular, by default, the document will intern strings for keys.
+
+A document is immutable. Since cloning a document is essentially a copy-on-write operation, it is mandatory to mutate stuff with clones.
+A document comes with a "builder" interface to mutate stuff and return a clone, e.g. add/remove things.
+
+A document knows how to decode/encode and unmarshal/marshal JSON (essentially the same API as encoding/json).
+
+A document can be walked over and navigated through:
+
+* object keys and array elements can be iterated over
+* json pointers can be resolved (json schema `$ref` semantics are not known at this level) efficiently (e.g. constant time or o(log n))
+* desirable but not required: should lookup a key efficiently (e.g. constant time or o(log n))
+
+> NOTE: this supersedes features previously provided by `jsonpointer`, `swag`
+
+Options:
+* a document may keep the parsing context of its nodes, to report higher-level errors
+* a document may support various tuning options regarding how best to store things (e.g. reduce numbers as soon as possible, compress large strings, etc)
+* ...
+
+#### How about YAML documents?
+
+We keep the current concept that any YAML should be translated to JSON before being processed.
+
+What about "verbatim" then? YAML is just too complex for me to drift into such details right now.
+
+#### JSON document store
+
+A document store organizes a few blocks of memory to store (i) interned strings and (ii) JSON scalar values packed in memory.
+
+It serves as a cache when loading several JSON documents.
+It serves internal "slots" to a document to keep track of its values, in a more efficient way than a pointer.
+
+A document store may be rather limited in size, e.g. 4 GB or so: we don't need an unlimited address space.
+
+> NOTE: this supersedes the document cache currently managed in `spec`
