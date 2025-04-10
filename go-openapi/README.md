@@ -4,8 +4,8 @@ This year (2025), the `go-openapi` initiative is now 10 years old...
 
 As a contributor to this project over the past, ahem, 8 years or so, it is time for a retrospective and honest criticism.
 
-Contributing to this vast project has been an exhilarating experience. So many jewels accumulated, such a vast collection of feedback and
-developer's experience accumulated... It would be such a waste just to throw away or archive for good such an accumulation of knowledge.
+Contributing to this vast project has been an exhilarating experience. So many jewels collected, such a vast collection of feedback, questions,
+and developer's experience accumulated... It would be a pity just to throw it away or archive for good this knowledge.
 
 > On the other hand, it is just a fact that any major refactoring effort would require a great deal of development, testing, etc.
 > Since the days of the project gathering dozens of developers are long gone, deciding to dive in and start such a daunting task is not easy.
