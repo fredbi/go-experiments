@@ -560,18 +560,18 @@ A structure that would look something like:
 * **`github.com/go-openapi/core/genmodels`** [go.mod]  - Data structures code generation from a JSON schema specification
 * `github.com/go-openapi/core/genmodels/cmd/genmodels` - A minimal CLI to generate models from JSON schema
 * `github.com/go-openapi/core/genmodels/generator` - Models generator
-* `github.com/go-openapi/core/genmodels/generator/contrib` - Models generator
-* `github.com/go-openapi/core/genmodels/generator/targets/golang/templates`
-* `github.com/go-openapi/core/genmodels/generator/targets/golang/templates/contrib`
-* `github.com/go-openapi/core/genmodels/generator/targets/golang/settings`
+* `github.com/go-openapi/core/genmodels/generator/contrib` - Supporting code for contributed models generator
+* `github.com/go-openapi/core/genmodels/generator/targets/golang/templates` - Model templates
+* `github.com/go-openapi/core/genmodels/generator/targets/golang/templates/contrib` - Contributed templates for models
+* `github.com/go-openapi/core/genmodels/generator/targets/golang/settings` - Language-specific generation settings for golang
   
-* **`github.com/go-openapi/core/genapi`** [go.mod]
-* `github.com/go-openapi/core/genapi/cmd/genapi`
-* `github.com/go-openapi/core/genapi/generator`
-* `github.com/go-openapi/core/genapi/generator/targets/golang/templates/client`
-* `github.com/go-openapi/core/genapi/generator/targets/golang/templates/server`
-* `github.com/go-openapi/core/genapi/generator/targets/golang/templates/contrib`
-* `github.com/go-openapi/core/genapi/generator/targets/golang/settings`
+* **`github.com/go-openapi/core/genapi`** [go.mod] - API code generation for operation handlers, client SDK
+* `github.com/go-openapi/core/genapi/cmd/genapi` - A minimal CLI to generate API components, excluding models
+* `github.com/go-openapi/core/genapi/generator` - API generator
+* `github.com/go-openapi/core/genapi/generator/targets/golang/templates/client` - Client SDK templates
+* `github.com/go-openapi/core/genapi/generator/targets/golang/templates/server` - Server templates
+* `github.com/go-openapi/core/genapi/generator/targets/golang/templates/contrib` - Contributed templates for API components
+* `github.com/go-openapi/core/genapi/generator/targets/golang/settings` - Language-specific generation settings for golang
 
 * **`github.com/go-openapi/core/genspec`** [go.mod]
 * `github.com/go-openapi/core/genspec/cmd/genspec`
@@ -592,17 +592,17 @@ A structure that would look something like:
 * `github.com/go-openapi/core/templates-repo` [go.mod]
 * `github.com/go-openapi/core/middleware` [go.mod]
 
-* **`github.com/go-openapi/core/strfmt`** [go.mod]
-* **`github.com/go-openapi/core/strfmt/bson-formats`** [go.mod]
-* **`github.com/go-openapi/core/strfmt/contrib-formats`** [go.mod]
+* **`github.com/go-openapi/core/strfmt`** [go.mod] - Types to support string formats
+* **`github.com/go-openapi/core/strfmt/bson-formats`** [go.mod] - String format types with BSON support
+* **`github.com/go-openapi/core/strfmt/contrib-formats`** [go.mod] - Extra formats contributed
 * 
-* `github.com/go-openapi/core/swag`
+* `github.com/go-openapi/core/swag` - A bag of utilities for swagger
 * `github.com/go-openapi/core/swag/conv`
-* `github.com/go-openapi/core/swag/mangling`
+* `github.com/go-openapi/core/swag/mangling` - Name mangling to support code generation
 * `github.com/go-openapi/core/swag/stringutils`
-* `github.com/go-openapi/core/swag/yamlutils`
-* `github.com/go-openapi/core/swag/jsonutils/adapters`
-* `github.com/go-openapi/core/validate` [go.mod]
+* `github.com/go-openapi/core/swag/yamlutils` - Utilities to deal with YAML
+* `github.com/go-openapi/core/swag/jsonutils/adapters` - JSON adapters to plug in different JSON libraries at runtime
+* `github.com/go-openapi/core/validate` [go.mod] - Data validation helpers
   
 * **`github.com/go-swagger/go-swagger/`** [go.mod]
 * `github.com/go-swagger/go-swagger/cmd/swagger`
