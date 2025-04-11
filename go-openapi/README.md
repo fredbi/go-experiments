@@ -1,6 +1,6 @@
 # Musings with go-openapi (still very draftish)
 
-This year (2025), the `go-openapi` initiative is now 10 years old...
+This year (2025), the `go-openapi` initiative is 10 years old...
 
 As a contributor to this project over the past, ahem, 8 years or so, it is time for a retrospective and honest criticism.
 
@@ -110,7 +110,7 @@ dynamically based on the JSON spec, without any generated code. More explanation
 
 Real-world issues we faced with this are intimately bound to the design choices of the go language regarding data structures vs json.
 
-Main issues in a nutshell:
+The central issues in a nutshell:
 
 * handling `null` JSON values
 * checking for json schema `required`
@@ -123,7 +123,7 @@ Main issues in a nutshell:
 * degraded performances when doing anything (including running the generated API) with the standard lib
 
 Rest assured: the toolkit works and covers most "sound" use cases. The issue with this design approach is that it sets a "glass ceiling"
-and some niche use cases or edge cases are very hard
+and some niche use cases or edge cases are tough
 
 ### Handling a swagger specification
 
@@ -132,7 +132,7 @@ This is essentially supported by the `spec` package.
 `spec` exposes the `Spec` type, which knows how to unmarshal and marshal a JSON swagger v2 spec. That's it.
 The `$ref` resolution feature is inside, so the package knows how to fetch remote documents over the network if needed.
 
-Alongside `$ref` resolution comes the `Expand` feature, which expands all `$ref`. The only valid use case to do so is spec and schema validation.
+Alongside `$ref` resolution comes the `Expand` feature, which expands all `$ref`. A valid use case is the validation of a spec or schema.
 
 ### Unfinished jobs / unsupported use cases
 
@@ -149,6 +149,7 @@ In no particular order:
 * full support for OAIv2 "polymorphic types" (now deprecated in OAIv3)
 * ready-to-use authentication middleware
 * OAI to grpc
+* pluggable features (e.g for string formats)
 * ...
 
 ## repo by repo analysis
@@ -175,7 +176,7 @@ Let's start with some positive assessment. I see many major successes:
 * Code is well-covered by a lot of unit tests, there are also a lot of integration tests
 * A large documentation set is available
 
-The main issue is the lack of OAIv3 support. That's a killer one.
+The main issue is the lack of OAIv3 support. **That's a killer one.**
 
 Unfortunately, my response to that one is kind of diluted all over this note.
 To move up to that stage, there are so many things that need to be reviewed and improved.
@@ -196,7 +197,7 @@ As a maintainer and user, I've hit the following issues and raised the following
   4. The analysis of swagger types is a bit confusing: using `analysis` was the goal, but instead we get a type resolver that is super-difficult to follow
   5. Model construction is super hard to follow. Almost nobody dares to mess with that part nowadays.
   6. codegen is very difficult to test and test code coverage is not very significant (regarding templates).
-     We test "expected generated code" and only on a few occasions the actual behavior of the generated program.
+     We test "expected generated code" and only on a few occasions do we test the actual behavior of the generated program.
      All this testing is fine but eventually, it made the product more and more rigid as testing against expected generated statements generates a lot
      of impacts on tests even with minor changes in templates
   8. Hit hard limits of the design when it comes to addressing fringe/edge cases such as:
@@ -206,8 +207,8 @@ As a maintainer and user, I've hit the following issues and raised the following
        * advance use cases with `allOf`
        * inability to evolve (with a reasonable effort) toward supporting `anyOf` or `oneOf`
   9. Confusing pointer/not pointer conventions as it depends on the type: parameters are nullable whenever not required (so you may check whether they were present or not)
-     but schema types are nullable whenever they are required (because validation is carried out after unmarshaling).
-     It gets even more complicated when playing around with the few options available like omitempty and x-nullable.
+     but schema types are nullable whenever required (because validation is carried out after unmarshaling).
+     It gets even more complicated when playing around with a few available options like omitempty and x-nullable.
  10. the mutability of schemas produces subtle bugs and prevents the parallelizing spec processing.
 
 * code scan
@@ -220,23 +221,209 @@ As a maintainer and user, I've hit the following issues and raised the following
  
 * releases
   1. The pace of releases has slowed down to almost a halt, perhaps once a year.
- 
+
+#### What would I like to do?
+* Move the tool to just a CLI to coordinate stuff: most features should be externalized to independent modules that could be used as standalone libraries
+* Modernize config management (e.g using `koanf`)
+* Modernize CLI (e.g. using `cobra` on top of `koanf`)
+* Externalize the templates repo feature
+* Externalize the code scan feature
+* Externalize the model generation feature, with its templates
+* Externalize the client/server feature, with its templates
+* Support pluggable features using the portable plugin design from `hashicorp`
+
+* Doc: support versioned documentation
+* Releasing: modernize with `goreleaser`
+
 ### analysis
 
 * spec flattening (i.e. bundling remote schema documents into a single root document) is very complex. Much more than it should be at least
 * spec flattening started by introducing a lot of other transforms (like renaming things, and reorganizing complex things) which were unrelated to _just_ bundling remote `$ref`
   in a single document. So we introduced the concept of "minimal flattening" to do just that (yeah it makes things more complicated to explain)...
-* the analyzer is actually not used a lot by go-swagger, not as much as it should at least. In particular go-swagger largely resorts to its type resolve rather than on schema analysis
+* the analyzer is actually not used a lot by go-swagger, not as much as it should at least. In particular go-swagger largely resorts to its internal type resolver rather than on schema analysis
+
+#### What would I like to do?
+
+I think the entire feature is too much dependent on many design choices that I'd like to change (handling JSON, handling $ref's, etc).
+I don't think we will ever push a "v2" of that one. The eventual fate of this repo will therefore likely be a "github archive".
+
+The intent (that is, to analyze swagger stuff and make it more palatable to other tools) remains totally valid.
+However, I would like to reason about analysis in a more focused way. For example, I'd make different, more specialized _analyzers_ to support different intents:
+
+* analyzing a source spec (or schema) to describe its content in a detailed way (e.g. more like an AST)
+  * examples: listing the properties of an object, listing the endpoints of an API etc, like this package does now
+* analyzing a source schema in a detailed way with the intent to produce a _validator_ (dynamically or as generated code)
+  * need a more thorough inspection (not currently existing) about json schema, such as redundant validations, impossible validations, naturally mutually exclusive `anyOf`, incompatible `allOf`, etc.
+  * find an optimized path for validations (e.g. prioritizing things that are likely to fail earlier, e.g. enum check before others, stricter or faster checks come first, etc.
+  * find factorizations for validations (e.g. all schemas that run the same validations, even if formally distinct entities, should be processed with just one function)
+* analyzing a source spec (or schema) with the intent to generate code for a given target
+  * this is specialized by target: generating a protobuf doesn't require the same level of understanding of a schema as generating for golang (or another language)
+  * bring more details about the source, pick additional meta-data (e.g. `x-go-*` annotations or other ways of annotating a json schema),
+    possibly injected by developers, so as to deliver the most accurate possible description of what should be generated
+  * examples: this is where it becomes important to know if a given data item is nullable, if the zero value is valid etc. These checks are currently mostly handled in `go-swagger` and not by `analysis`
+
+The `diff` feature is very useful and should be kept. Perhaps we could make it less verbose and spec-version dependent. Not sure yet how to improve that part.
 
 ### errors
 
+I think this repo is pretty much reusable. I has remained maintained to keep up with go advances in error handling.
+
+Perhaps a few things should be handed over to different repos, though. I see that one more as generic error type than it is now (handling validation errors etc). Not sure yet.
+
+Likely a "v2" with a reduced scope and API surface.
+
 ### inflect
+
+Likely a github archive.
+
+If it eventually proves useful (but it didn't make it over the past decade ...), re-insource with the name mangling feature (`swag/mangling`).
+
 ### jsonpointer & jsonreference
+
+Not in line with the new design, which predates entirely the feature set.
+
+Likely a github archive.
+
 ### loads
+
+Likely a "v2" with a reduced API surface. I just want a flexible loader to load JSON or YAML documents. The provided one does the job.
+
+I don't want all the features currently onboarded in the `loads.Spec` struct, such as `Pristine`, `Analyzed` etc.
+
+They are mostly confusing users and not really used appropriately.
 
 ### runtime
 
+`runtime` exposes a lot of features. Way too many, in fact.
+So we have:
+
+* a client runtime that holds most of the common stuff used by generated SDK clients
+  * it's loaded with features and the `request` object is super complex
+  * options to configure TLS, and a few other things
+* a few interesting server middlewares, such as serving spec or a spec UI (redoc, swagger UI)
+* a (monolithic) server middleware that takes care of a lot of things when serving a swagger API:
+  * the server is aware of the swagger specs and takes decisions based on the swagger document. There is no generated code in there.
+  * content negotiation
+  * routing (the runtime brings in its own bespoke `denco` router, very efficient btw)
+  * parsing request parameters
+  * request pre-preprocessing before calling API handlers (e.g. from generated code or using the "untyped API" feature)
+  * response handling to produce the final output (e.g. text, json, yaml...)
+* probably a few other things that I forgot
+
+The central issue in my opinion is the **monolithic** aspect of this component. Middleware should assemble as a stack of small focused features.
+
+Ideally, developers should be able to select which ones they prefer.
+But this was difficult to achieve with this architecture, so the "API" interface is a big middleware and it may be slightly amended by injecting additional middlewares.
+
+It all stems from decisions about what feature is handed over to generated code (e.g. data validation) and what feature is handled dynamically at runtime (e.g. security, routing).
+
+I think we should make it so that developers have more options to make their own decisions about this.
+
+In an ideal design, we could imagine for instance that:
+
+* validation could be something that is carried out dynamically, or not.
+* routing could be something that comes from generated code (using a developer's favorite framework), or not
+* middlewares could be added or replaced in the usual idiomatic way of scaffolding an http server, not using some out-of-band configuration of the API middleware
+
+A few issues:
+
+* dealing with TLS config was initially a good idea, but the configuration stuff remains taxing
+* bringing in tracing (OTEL support) was a good idea, but it causes problems with all the required dependencies
+* can't choose the router (standard library, or other stuff widely available)
+* can't choose to code gen routes over dynamically resolving them (like it is now): we should leave it to developer whether they prefer to have their route building stuff exposed
+  using their favorite framework (possibly generated code) or to have this part hidden by a smart middleware that knows about the spec
+* dependency injection should be made simpler (e.g. using request context). At this moment, the way to inject, say, a database connection pool is kind of awkward.
+
+
+#### What would I like to do?
+
+In short, I'd like to make this masterpiece of engineering simpler to use and to give more visibility to the many nice features that are built inside.
+
+I'd also like to be more modular and its parts reusable, letting people take their own decisions about how they implement their API.
+
+Well, to revive the toolkit spirit here.
+
+Start with some heavy refactoring to split a few things as their own modules like:
+
+* middlewares (UI, serve doc, etc)
+* content negotiation and keep-alive as their own middleware
+* separately defined producers and consumers, so many more could be contributed
+* tracing as a pluggable feature, no longer imposing dependencies
+* figure a way to be able to inject a router or already prepared routes
+* client-side upload file feature
+* modernized options setting for client (including TLS)
+* modernized methods to use `context.Context`, deprecate or make optional client timeout settings
+* figure a way to be able to inject client middleware
+* figure a way to inject the outcome of the content negotiation more workable by API handlers (it's really a pain to implement as for now)
+* find a way to split the security layer, so as to make it pluggable
+* modernize logging, with the possibility to inject external loggers (such as `zap`, `zerolog` etc)
+
 ### spec & spec3
+
+`spec` exposes the go data types that build up an OpenAPI v2 specification. Essentially, you can marshal and unmarshal JSON bytes.
+
+The hidden complexity here lies in the built-in support for `$ref`. Spec expansion and `$ref` resolution offer a poor interface and little flexibility.
+In particular, it is difficult to extend this feature and support the more advanced `$ref` specification that comes with more recent json schema drafts.
+
+Hence:
+* **`$ref` should be its own type, with the capability to `Resolve` the location pointed to, and possibly to `Expand` it.**
+* **all the base path, ID etc that is currently handled by the ref resolver type should be captured by a context.Context**
+
+So we would have something like:
+```go
+Ref.Resolve(context.Context) (targetType, error)
+```
+
+* the resolution of cycles with `$ref` should not produce a random result
+
+json pointers and `$ref` are tricky to resolve with a strongly typed language (it gets even worse in the `analysis` package).
+What we do now is that we know exactly which places accept `$ref`s in a swagger specification or a JSON schema so we anticipate the kind of thing
+we can find in the target. It works in most cases, 
+
+ #### A note on `spec3`
+
+`spec3` has been an unfinished attempt to support OpenAPI v3. 
+It wanted to solve a few design issues of the original `spec`, namely the key ordering issue.
+It relied on easyjson to do this efficiently, and support for `$ref` resolution (`Expand`, `Resolve` etc...) disappeared.
+
+So the new object model is able to marshal and unmarshal an OpenAPIv3 spec, full stop. No validation for jsonschema v5, no `$ref`, no codegen.
+
+The benefit was that it gave a good insight about differences between versions, and found solutions to some problems.
+
+The problem I see with that approach is that it missed the *main* problem, which is, in my opinion, long-term maintainability and evolutivity across versions.
+
+We know now for a fact that the OpenAPI committee has no problem with issuing breaking changes. Even the JSON schema committee may do so from time to time.
+What we take for granted as go developers, i.e. the "forever backward compatibility assurance", is a unique and highly distinctive feature of golang.
+When dealing with stuff that comes from outside go-land, the ability to absorb external changes while remaining compatible to your users is essential.
+
+Hence:
+
+**data types without any exported field. Only methods.**
+
+So `spec3` is cool, but will it shorten our next cycle when `3.1`, `3.2`, and `4.0` are out? How about json schema (now Draft 2020: we missed five major releases!).
+I don't think so.
+
+The `OrderedMap` layout is cool. However, we now have in golang iterators to replace that part.
+
+Removing `$ref` processing and expansion from the scope was a good decision (it is the most complex part of the `spec` package). However, the design of this feature remains an unanswered question there.
+
+Support for JSON pointers (formerly, using the `jsonpointer` package) has been removed too. 
+
+Hence:
+**`$ref` resolution (and possibly expansion) should be a feature of the type supporting a JSON schema**.
+
+> It has nothing specific to the OpenAPI spec schema, which inherits from it.
+
+**JSON pointer should be a feature of any type supporting some sort of JSON document**
+
+> JSON pointers are defined by RFC 6901 and are more general than JSON schema.
+
+Still no clear solution for JSON stuff that doesn't fit well with go native types, i.e. `null`, overflowing numerical types, the decimal representation of numerical types ...
+Even if these problems are overall minor, we build a situation in which we know in advance that none of these may ever be solved.
+
+The dependency on easyjson is a minor problem after all: the relied-upon components may easily be re-insourced to internal packages.
+
+Likely eventual fate of these repos: github archive.
 
 ### strfmt
 ### stubs
