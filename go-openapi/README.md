@@ -477,6 +477,91 @@ This repo mixes 3 different use cases:
     (e.g. "this is an interface type"). This would make it easier to support alternative solutions to represent the same specification (in this example, the developer might find generated
     interface types awkward to use and would prefer a composition of concrete types)
 
+### Mono-repo layout
+
+One git repo, many modules.
+
+Simplify the workflow that currently is:
+
+1. pick an issue reported in go-swagger
+2. find the impacted go-openapi repo
+3. PR to fix it, mention "contribute to go-swagger/go-swager#123)
+4. PR to update dependency in go-swagger
+5. insert test to prove fix, mention "fixes #123"
+
+Into:
+1. Pick an issue in "core"
+2. PR to fix it, with test, report "fixes #123"
+
+
+A structure that would look something like:
+
+* `github.com/go-openapi/core`
+* `github.com/go-openapi/core/docs`
+ 
+* **`github.com/go-openapi/core/json`** [go.mod]
+* `github.com/go-openapi/core/json/parser`
+* `github.com/go-openapi/core/json/document`
+* `github.com/go-openapi/core/json/document/jsonpath`
+  
+* **`github.com/go-openapi/core/jsonschema`** [go.mod]
+* `github.com/go-openapi/core/jsonschema/analyzer`
+* `github.com/go-openapi/core/jsonschema/analyzer/common`
+* `github.com/go-openapi/core/jsonschema/analyzer/common/canonical`
+* `github.com/go-openapi/core/jsonschema/analyzer/validation`
+* `github.com/go-openapi/core/jsonschema/analyzer/generation`
+* `github.com/go-openapi/core/jsonschema/analyzer/generation/targets`
+* `github.com/go-openapi/core/jsonschema/analyzer/generation/targets/golang`
+* `github.com/go-openapi/core/jsonschema/analyzer/generation/targets/protobuf`
+* `github.com/go-openapi/core/jsonschema/validator`
+  
+* **`github.com/go-openapi/core/genmodels`** [go.mod]
+* `github.com/go-openapi/core/genmodels/cmd/genmodels`
+* `github.com/go-openapi/core/genmodels/generator`
+* `github.com/go-openapi/core/genmodels/generator/targets/golang/templates`
+* `github.com/go-openapi/core/genmodels/generator/targets/golang/settings`
+  
+* **`github.com/go-openapi/core/genapi`** [go.mod]
+* `github.com/go-openapi/core/genapi/cmd/genapi`
+* `github.com/go-openapi/core/genapi/generator`
+* `github.com/go-openapi/core/genapi/generator/targets/golang/templates/client`
+* `github.com/go-openapi/core/genapi/generator/targets/golang/templates/server`
+* `github.com/go-openapi/core/genapi/generator/targets/golang/templates/contrib`
+* `github.com/go-openapi/core/genapi/generator/targets/golang/settings`
+
+* **`github.com/go-openapi/core/genspec`** [go.mod]
+* `github.com/go-openapi/core/genspec/cmd/genspec`
+* `github.com/go-openapi/core/genspec/cmd/scanner`
+
+* **`github.com/go-openapi/core/spec`** [go.mod]
+* `github.com/go-openapi/core/spec/analyzer`
+* `github.com/go-openapi/core/spec/validator`
+
+* `github.com/go-openapi/core/errors`
+ 
+* `github.com/go-openapi/core/runtime`
+* **`github.com/go-openapi/core/runtime/client`** [go.mod]
+* **`github.com/go-openapi/core/runtime/server`** [go.mod]
+* **`github.com/go-openapi/core/runtime/producers`** [go.mod]
+* **`github.com/go-openapi/core/runtime/consumers`** [go.mod]
+
+* `github.com/go-openapi/core/templates-repo`
+* `github.com/go-openapi/core/middleware`
+
+* **`github.com/go-openapi/core/strfmt`** [go.mod]
+* **`github.com/go-openapi/core/strfmt/bson-formats`** [go.mod]
+* **`github.com/go-openapi/core/strfmt/contrib-formats`** [go.mod]
+* 
+* `github.com/go-openapi/core/swag`
+* `github.com/go-openapi/core/swag/conv`
+* `github.com/go-openapi/core/swag/mangling`
+* `github.com/go-openapi/core/swag/stringutils`
+* `github.com/go-openapi/core/swag/yamlutils`
+* `github.com/go-openapi/core/swag/jsonutils/adapters`
+
+* **`github.com/go-swagger/go-swagger/`** [go.mod]
+* `github.com/go-swagger/go-swagger/cmd/swagger`
+
 ### New components to support JSON
 
 The main design goal are:
