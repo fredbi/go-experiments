@@ -4,7 +4,7 @@
 
 This year (2025), the `go-openapi` initiative is 10 years old...
 
-This paper is about what has been painstakingly maintained over this period by a bunch of golang enthusiasts.
+This paper is about the go-openapi and go-swagger projects, which have been painstakingly maintained over this period by a bunch of golang enthusiasts.
 It reflects my personal views and these only, not the views of the community of maintainers.
 
 * https://github.com/go-openapi
@@ -538,25 +538,31 @@ A structure that would look something like:
 * `github.com/go-openapi/core/docs`
  
 * **`github.com/go-openapi/core/json`** [go.mod]
-* `github.com/go-openapi/core/json/parser`
-* `github.com/go-openapi/core/json/document`
-* `github.com/go-openapi/core/json/document/jsonpath`
+* `github.com/go-openapi/core/json/parser` - A fast JSON parser
+* `github.com/go-openapi/core/json/parser/contrib` [go.mod] - Contributed alternative parser implementations
+* `github.com/go-openapi/core/json/document` - An immutable, verbatim JSON document
+* `github.com/go-openapi/core/json/document/contrib` [go.mod] - Contributed alternative implementations of the json document
+* `github.com/go-openapi/core/json/document/jsonpath` - JSONPath expressions for a JSON document
+* `github.com/go-openapi/core/json/store` - A memory-efficient store for JSON documents
+* `github.com/go-openapi/core/json/store/contrib` [go.mod] - Contributed alternative implementations of the json document store
   
-* **`github.com/go-openapi/core/jsonschema`** [go.mod]
-* `github.com/go-openapi/core/jsonschema/analyzer`
-* `github.com/go-openapi/core/jsonschema/analyzer/common`
-* `github.com/go-openapi/core/jsonschema/analyzer/common/canonical`
-* `github.com/go-openapi/core/jsonschema/analyzer/validation`
-* `github.com/go-openapi/core/jsonschema/analyzer/generation`
-* `github.com/go-openapi/core/jsonschema/analyzer/generation/targets`
-* `github.com/go-openapi/core/jsonschema/analyzer/generation/targets/golang`
-* `github.com/go-openapi/core/jsonschema/analyzer/generation/targets/protobuf`
-* `github.com/go-openapi/core/jsonschema/validator`
+* **`github.com/go-openapi/core/jsonschema`** [go.mod] - JSON schema implementation based on a json document (draft 4 to draft 2020)
+* `github.com/go-openapi/core/jsonschema/analyzer` - JSON schema specialized analyzers
+* `github.com/go-openapi/core/jsonschema/analyzer/common` - Schema analysis techniques common to all analyzers
+* `github.com/go-openapi/core/jsonschema/analyzer/common/canonical` - A unique canonical representation of a JSON schema
+* `github.com/go-openapi/core/jsonschema/analyzer/validation` - An analyzer dedicated to producing efficient validators
+* `github.com/go-openapi/core/jsonschema/analyzer/generation` - An analyzer dedicated to producing idiomatic generated targets
+* `github.com/go-openapi/core/jsonschema/analyzer/generation/targets - Target-specific analyzers
+* `github.com/go-openapi/core/jsonschema/analyzer/generation/targets/golang` - An analyzer dedicated to producing clean go
+* `github.com/go-openapi/core/jsonschema/analyzer/generation/targets/protobuf` [go.mod] - An analyzer dedicated to producing correct and efficient protobuf
+* `github.com/go-openapi/core/jsonschema/validator` - A runtime validator based on analysis, as closure
   
-* **`github.com/go-openapi/core/genmodels`** [go.mod]
-* `github.com/go-openapi/core/genmodels/cmd/genmodels`
-* `github.com/go-openapi/core/genmodels/generator`
+* **`github.com/go-openapi/core/genmodels`** [go.mod]  - Data structures code generation from a JSON schema specification
+* `github.com/go-openapi/core/genmodels/cmd/genmodels` - A minimal CLI to generate models from JSON schema
+* `github.com/go-openapi/core/genmodels/generator` - Models generator
+* `github.com/go-openapi/core/genmodels/generator/contrib` - Models generator
 * `github.com/go-openapi/core/genmodels/generator/targets/golang/templates`
+* `github.com/go-openapi/core/genmodels/generator/targets/golang/templates/contrib`
 * `github.com/go-openapi/core/genmodels/generator/targets/golang/settings`
   
 * **`github.com/go-openapi/core/genapi`** [go.mod]
@@ -575,7 +581,7 @@ A structure that would look something like:
 * `github.com/go-openapi/core/spec/analyzer`
 * `github.com/go-openapi/core/spec/validator`
 
-* `github.com/go-openapi/core/errors`
+* `github.com/go-openapi/core/errors` [go.mod]
  
 * `github.com/go-openapi/core/runtime`
 * **`github.com/go-openapi/core/runtime/client`** [go.mod]
@@ -583,8 +589,8 @@ A structure that would look something like:
 * **`github.com/go-openapi/core/runtime/producers`** [go.mod]
 * **`github.com/go-openapi/core/runtime/consumers`** [go.mod]
 
-* `github.com/go-openapi/core/templates-repo`
-* `github.com/go-openapi/core/middleware`
+* `github.com/go-openapi/core/templates-repo` [go.mod]
+* `github.com/go-openapi/core/middleware` [go.mod]
 
 * **`github.com/go-openapi/core/strfmt`** [go.mod]
 * **`github.com/go-openapi/core/strfmt/bson-formats`** [go.mod]
@@ -596,7 +602,8 @@ A structure that would look something like:
 * `github.com/go-openapi/core/swag/stringutils`
 * `github.com/go-openapi/core/swag/yamlutils`
 * `github.com/go-openapi/core/swag/jsonutils/adapters`
-
+* `github.com/go-openapi/core/validate` [go.mod]
+  
 * **`github.com/go-swagger/go-swagger/`** [go.mod]
 * `github.com/go-swagger/go-swagger/cmd/swagger`
 
