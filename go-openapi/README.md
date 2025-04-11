@@ -1,11 +1,18 @@
-# Musings with go-openapi (still very draftish)
+# Musings with go-openapi
+
+> TODO(fredbi): organize this doc in smaller pages and publish it on github pages.
 
 This year (2025), the `go-openapi` initiative is 10 years old...
 
-As a contributor to this project over the past, ahem, 8 years or so, it is time for a retrospective and honest criticism.
+This paper is about what has been painstakingly maintained over this period by a bunch of golang enthusiasts.
+It reflects my personal views and these only, not the views of the community of maintainers.
 
+* https://github.com/go-openapi
+* https://github.com/go-swagger/go-swagger
+
+As a contributor to this project over the past, ahem, 8 years or so, it is time for a retrospective and honest criticism.
 Contributing to this vast project has been an exhilarating experience. So many jewels collected, such a vast collection of feedback, questions,
-and developer's experience accumulated... It would be a pity just to throw it away or archive for good this knowledge.
+and developer's experience accumulated... It would be a pity just to throw it away or archive for good this trove of knowledge.
 
 > On the other hand, it is just a fact that any major refactoring effort would require a great deal of development, testing, etc.
 > Since the days of the project gathering dozens of developers are long gone, deciding to dive in and start such a daunting task is not easy.
@@ -13,7 +20,8 @@ and developer's experience accumulated... It would be a pity just to throw it aw
 > My point here is to try and understand how to move forward, somehow reinvigorate the project with fresh views, and perhaps, deliver to the
 > golang community better tooling to produce nice APIs.
 
-The main and most awaited feature is support for OpenAPI v3 (aka OAIv3) or even v4. But many Bothans died trying to do so... it is a _huge_ amount of work ahead.
+The main and most awaited feature is support for OpenAPI v3 (aka OAIv3) or even v4.
+But many Bothans died trying to do so... it is a _huge_ amount of work ahead. Few people realize how large it is.
 It requires careful design and planning. The difference is that we've 10 years of accumulated feedback and figuring out different designs.
 
 In the sections below, I am giving a more comprehensive analysis. Even though OAIv3 is the ultimate goal, it is not the only one and many micro-designs need
@@ -61,7 +69,17 @@ Well, overall we have kept this compass, even though there are a few departures 
 
 The main problem I see with this approach, which I've largely supported so far, is that it tends to result in a project where experts talk to experts only.
 Many less experienced developers have been struggling with our code base. Sadly, we missed a lot of contributions because of this.
+
 Simplification has become an acute challenge. This is true for our codebase in general, our package APIs as well as our user interfaces (CLI, documentation).
+
+#### Why would I want to keep the same kompass?
+
+Simply because API-land is too vast to be covered by a framework.
+There are so many use-cases, so many opinions, so many ways to achieve similar things.
+Even though OpenAPI came as a way to unify a bit the practice of building a REST-like API, the field remain largely open.
+
+I like the idea of a toolkit that simplifies a few things (boring things, highly specialized or technical things), but leaves it up
+to developers to decide about their design.
 
 #### Approach to refactoring
 
@@ -158,12 +176,13 @@ Trying to be honest here: a little self-criticism doesn't hurt :).
 
 ### go-swagger
 
-> My opinion is very much biased by my personal use of the tool and favorite areas.
+> My opinion is very much biased by my personal use of the tool and my favorite areas.
 > As a matter of fact, I've been mostly active with improving the schema to model generation,
-> and by and large very much in the code generation side of this tool. Not so much on
-> the other way around: generating spec from code, which I have never personally used and barely contributed to.
+> and by and large I've essentially worked on the code generation side of this tool.
+> Not so much on the other way around: generating spec from code, which I have never personally used
+> and have barely contributed to.
 
-Let's start with some positive assessment. I see many major successes:
+Let's start with some positive assessment. I see many major achievements:
 
 * Supports _almost_ everything dealing with OAIv2, only fringe use cases remain poorly supported
 * Distributed for many platforms as binary releases and docker images
@@ -181,9 +200,9 @@ The main issue is the lack of OAIv3 support. **That's a killer one.**
 Unfortunately, my response to that one is kind of diluted all over this note.
 To move up to that stage, there are so many things that need to be reviewed and improved.
 
-As a maintainer and user, I've hit the following issues and raised the following criticisms:
+As a maintainer and user, I've hit the following issues and may raise quite a few (constructive) criticisms:
 * CLI
-  1. the main intent of the tool is to provide a CLI, but there are too many built-in features
+  1. the main intent of the tool is to expose a CLI user-interface, but there are too many built-in features
   2. the tool is highly customizable, but documentation about how to do so is scarce
   3. should improve the dockerized use case
   4. bloated/undocumented options
@@ -223,7 +242,8 @@ As a maintainer and user, I've hit the following issues and raised the following
   1. The pace of releases has slowed down to almost a halt, perhaps once a year.
 
 #### What would I like to do?
-* Move the tool to just a CLI to coordinate stuff: most features should be externalized to independent modules that could be used as standalone libraries
+
+* Move the tool to just a CLI that coordinates stuff: most features should be externalized to independent modules that could be used as standalone libraries
 * Modernize config management (e.g using `koanf`)
 * Modernize CLI (e.g. using `cobra` on top of `koanf`)
 * Externalize the templates repo feature
@@ -232,20 +252,38 @@ As a maintainer and user, I've hit the following issues and raised the following
 * Externalize the client/server feature, with its templates
 * Support pluggable features using the portable plugin design from `hashicorp`
 
+* New features that I'd like
+  * Support OAI v3.x (see below)
+  * Still support OAI v2
+  * Stop being shy and expose (propose?) extensions to the standard
+  * Generated server supporting streams out-of-the-box (likely with an opinionated view)
+  * Produce a GUI with a more interactive experience like "try and generate a small bit so I can see if I like the result" (e.g. using `fyne-io`)
+  * Introduce rule-based configuration to inject custom tags based on rules (e.g. pattern matching)
+  * Add the ability to generate protobuf from jsonschema (I know this is already covered somewhere else, I'd just like to make it better if I can)
+  * Add the ability to generate `grpc` and `nats` servers or clients based on this protobuf
+  * Expose new useful tools like extracting schemas from a database, or better API documentation tools
+
 * Doc: support versioned documentation
-* Releasing: modernize with `goreleaser`
+* Releases: modernize with `goreleaser`
 
 ### analysis
 
 * spec flattening (i.e. bundling remote schema documents into a single root document) is very complex. Much more than it should be at least
-* spec flattening started by introducing a lot of other transforms (like renaming things, and reorganizing complex things) which were unrelated to _just_ bundling remote `$ref`
-  in a single document. So we introduced the concept of "minimal flattening" to do just that (yeah it makes things more complicated to explain)...
-* the analyzer is actually not used a lot by go-swagger, not as much as it should at least. In particular go-swagger largely resorts to its internal type resolver rather than on schema analysis
+> spec flattening started by introducing a lot of other transforms (like renaming things, and reorganizing complex things),
+>  which were unrelated to _just_ bundling remote `$ref` in a single document.
+>  So we introduced the concept of "minimal flattening" to do just that (yeah it makes things more complicated to explain)...
+
+* the analyzer is actually not used a lot by go-swagger, not as much as it should at least
+
+> In particular go-swagger largely resorts to its internal type resolver rather than to schema analysis, so we have that kind
+> of more or less duplicated features.
 
 #### What would I like to do?
 
-I think the entire feature is too much dependent on many design choices that I'd like to change (handling JSON, handling $ref's, etc).
-I don't think we will ever push a "v2" of that one. The eventual fate of this repo will therefore likely be a "github archive".
+I think the entire feature is too dependent on many historical design choices which I'd like to change (handling JSON, handling $ref's, etc).
+I don't think we will ever push a "v2" of that one.
+
+Therefore, the eventual fate of this repo will likely be a "github archive".
 
 The intent (that is, to analyze swagger stuff and make it more palatable to other tools) remains totally valid.
 However, I would like to reason about analysis in a more focused way. For example, I'd make different, more specialized _analyzers_ to support different intents:
@@ -629,3 +667,50 @@ It serves internal "slots" to a document to keep track of its values, in a more 
 A document store may be rather limited in size, e.g. 4 GB or so: we don't need an unlimited address space.
 
 > NOTE: this supersedes the document cache currently managed in `spec`
+
+### Model generation
+
+Ideas:
+
+* self-sustained library
+* provided with a CLI for testing, experimenting or focused usage (same style as go-swagger, just more focused)
+* ships with templates
+* reuses templates-repo
+* primary support is for golang, but I'd like to add protobuf just to prove the concept of multi-target code generation
+* keep the original objectives: clean code, readable, linter-friendly and godoc-friendly
+* inject much more customization with `x-go-*` tags
+* focused primarily on supporting jsonschema draft 4 to 2020, plus swagger v2 and OAI v3.x idioms
+
+Features outline:
+* support null, use of pointers
+  * by default doesn't use pointers but "nullable types" to remain 100% safe regarding JSON semantics
+  * customizable rendering available locally or globally (e.g. with pattern matching rules) with the following options:
+    * favor native types, assuming that zero-value vs null doesn't affect semantics (recommended approach)
+    * use pointers with parsimony, whenever explicitly told to (e.g. x-go-nullable)
+    * generated structs are all "nullable" without resorting to a pointer (i.e. embed an "isNull bool" field)
+* polymorphic types (swagger v2), aka "inheritance" can be rendered in several ways
+    * are supported for any kind of container, not just plain vanilla
+    * with an interface type (default, like go-swagger currently does)
+    * with embedded types on demand
+    * other designs?
+* custom types
+    * either wrapped (embedded structs) or imported as is (like now)
+    * may use internal json document as a legit type (dev wants an opaque structure)
+     
+* marshaling/unmarshaling
+    * option to support different JSON libraries - default remains the standard lib
+    * option to generate code for our internal json parser, easyjson and perhaps a few others
+    * built-in option to support streaming (internal json parser)
+ 
+* validation
+    * simplified interface: Validate(context.Context) error <- no strfmt specification (injected in context)
+    * option not to generate validation functions
+    * option to inject runtime validators (closure functions produced by schema analysis)
+    * option to generate UnmarshalValidate and MarshalValidate (has impac
+    * implementation of "required": either delegate to UnmarshalValidate/MarshalValidate or post-unmarshaling by Validate()
+
+ * oneOf, anyOf
+    * analysis determines if oneOf holds some mutually exlusive cases
+ * allOf
+    * keep type composition for most cases (e.g. identified as "serialization" schemas)
+    * support "validation only allOf" idiom
