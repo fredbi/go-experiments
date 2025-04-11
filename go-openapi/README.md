@@ -523,19 +523,21 @@ Simplify the workflow that currently is:
 
 1. pick an issue reported in go-swagger
 2. find the impacted go-openapi repo
-3. PR to fix it, mention "contribute to go-swagger/go-swager#123)
-4. PR to update dependency in go-swagger
-5. insert test to prove fix, mention "fixes #123"
+3. PR to fix it, unit test, mention "contribute to go-swagger/go-swager#123)
+4. PR to update the dependency in go-swagger, with an integration test to prove the fix, mention "fixes #123"
+
+The process gets even longer with indirect dependencies across several go-openapi repos.
 
 Into:
+
 1. Pick an issue in "core"
-2. PR to fix it, with test, report "fixes #123"
+2. PR to fix it, with unit and integration test (in different modules), mention "fixes #123"
 
 
-A structure that would look something like:
+A structure that would look something like with a new go-openapi/core github repository:
 
-* `github.com/go-openapi/core`
-* `github.com/go-openapi/core/docs`
+* `github.com/go-openapi/core` - Core go-openapi components
+* `github.com/go-openapi/core/docs` - Source of the go-openapi documentation site
  
 * **`github.com/go-openapi/core/json`** [go.mod]
 * `github.com/go-openapi/core/json/parser` - A fast JSON parser
@@ -560,7 +562,7 @@ A structure that would look something like:
 * **`github.com/go-openapi/core/genmodels`** [go.mod]  - Data structures code generation from a JSON schema specification
 * `github.com/go-openapi/core/genmodels/cmd/genmodels` - A minimal CLI to generate models from JSON schema
 * `github.com/go-openapi/core/genmodels/generator` - Models generator
-* `github.com/go-openapi/core/genmodels/generator/contrib` - Supporting code for contributed models generator
+* `github.com/go-openapi/core/genmodels/generator/contrib` - Pluggable supporting code for contributed models generator
 * `github.com/go-openapi/core/genmodels/generator/targets/golang/templates` - Model templates
 * `github.com/go-openapi/core/genmodels/generator/targets/golang/templates/contrib` - Contributed templates for models
 * `github.com/go-openapi/core/genmodels/generator/targets/golang/settings` - Language-specific generation settings for golang
@@ -568,44 +570,60 @@ A structure that would look something like:
 * **`github.com/go-openapi/core/genapi`** [go.mod] - API code generation for operation handlers, client SDK
 * `github.com/go-openapi/core/genapi/cmd/genapi` - A minimal CLI to generate API components, excluding models
 * `github.com/go-openapi/core/genapi/generator` - API generator
+* **`github.com/go-openapi/core/genapi/generator/contrib`** [go.mod] - Pluggable supporting code for contributed API components
 * `github.com/go-openapi/core/genapi/generator/targets/golang/templates/client` - Client SDK templates
 * `github.com/go-openapi/core/genapi/generator/targets/golang/templates/server` - Server templates
 * `github.com/go-openapi/core/genapi/generator/targets/golang/templates/contrib` - Contributed templates for API components
 * `github.com/go-openapi/core/genapi/generator/targets/golang/settings` - Language-specific generation settings for golang
 
-* **`github.com/go-openapi/core/genspec`** [go.mod]
-* `github.com/go-openapi/core/genspec/cmd/genspec`
-* `github.com/go-openapi/core/genspec/cmd/scanner`
+* **`github.com/go-openapi/core/genspec`** [go.mod] - OpenAPI spec generation from source code
+* `github.com/go-openapi/core/genspec/cmd/genspec` - A minimal CLI to generate spec from source
+* `github.com/go-openapi/core/genspec/cmd/scanner` - The code scanner and implementation of source annotations
 
-* **`github.com/go-openapi/core/spec`** [go.mod]
-* `github.com/go-openapi/core/spec/analyzer`
-* `github.com/go-openapi/core/spec/validator`
+* **`github.com/go-openapi/core/spec`** [go.mod] - JSON document for OpenAPI v2, v3.x implementation
+* `github.com/go-openapi/core/spec/analyzer` - OpenAPI spec analyzer for code generation
+* `github.com/go-openapi/core/spec/validator` - OpenAPI spec validator
+* `github.com/go-openapi/core/spec/linter` - OpenAPI spec linter
+* `github.com/go-openapi/core/spec/mixer` - OpenAPI spec merger (mixin)
+* `github.com/go-openapi/core/spec/differ` - OpenAPI spec diff
+* `github.com/go-openapi/core/spec/cmd/linter` - A minimal CLI frontend for the OpenAPI spec linter
 
-* `github.com/go-openapi/core/errors` [go.mod]
+* `github.com/go-openapi/core/errors` [go.mod] - A common error type for go-openapi repositories
  
-* `github.com/go-openapi/core/runtime`
-* **`github.com/go-openapi/core/runtime/client`** [go.mod]
-* **`github.com/go-openapi/core/runtime/server`** [go.mod]
-* **`github.com/go-openapi/core/runtime/producers`** [go.mod]
-* **`github.com/go-openapi/core/runtime/consumers`** [go.mod]
-
-* `github.com/go-openapi/core/templates-repo` [go.mod]
-* `github.com/go-openapi/core/middleware` [go.mod]
-
+* **`github.com/go-openapi/core/runtime`** [go.mod] - Runtime components to run untyped or generated APIs
+* `github.com/go-openapi/core/runtime/client` [go.mod] - Runtime API client library
+* `github.com/go-openapi/core/runtime/server` [go.mod] - Runtime API server library
+* **`github.com/go-openapi/core/runtime/producers`** [go.mod] - Response media producers
+* **`github.com/go-openapi/core/runtime/producers/contrib`** [go.mod] - Contributed extra response media producers
+* **`github.com/go-openapi/core/runtime/consumers`** [go.mod] - Request media consumers
+* **`github.com/go-openapi/core/runtime/consumers/contrib`** [go.mod] - Contributed extra request media consumers
+* `github.com/go-openapi/core/runtime/middleware` [go.mod] - Collection of middleware
+* `github.com/go-openapi/core/runtime/middleware/server` [go.mod] - Collection of middleware for an API server 
+* `github.com/go-openapi/core/runtime/middleware/client` [go.mod] - Collection of middleware for an API client
+ 
+* `github.com/go-openapi/core/templates-repo` [go.mod] - Templates repository for code generation
+  
 * **`github.com/go-openapi/core/strfmt`** [go.mod] - Types to support string formats
-* **`github.com/go-openapi/core/strfmt/bson-formats`** [go.mod] - String format types with BSON support
+* **`github.com/go-openapi/core/strfmt/goswagger-formats`** [go.mod] - Extra formats provided with go-swagger
+* **`github.com/go-openapi/core/strfmt/bson-formats`** [go.mod] - Standard string format types extended with BSON support
+* **`github.com/go-openapi/core/strfmt/goswagger-bson-formats`** [go.mod] - Extra string format types extended with BSON support
 * **`github.com/go-openapi/core/strfmt/contrib-formats`** [go.mod] - Extra formats contributed
-* 
+  
 * `github.com/go-openapi/core/swag` - A bag of utilities for swagger
 * `github.com/go-openapi/core/swag/conv`
 * `github.com/go-openapi/core/swag/mangling` - Name mangling to support code generation
 * `github.com/go-openapi/core/swag/stringutils`
 * `github.com/go-openapi/core/swag/yamlutils` - Utilities to deal with YAML
 * `github.com/go-openapi/core/swag/jsonutils/adapters` - JSON adapters to plug in different JSON libraries at runtime
-* `github.com/go-openapi/core/validate` [go.mod] - Data validation helpers
-  
-* **`github.com/go-swagger/go-swagger/`** [go.mod]
+
+* **`github.com/go-openapi/core/validate`** [go.mod] - Data validation helpers
+
+* **`github.com/go-openapi/core/plugin`** [go.mod] - Pluggable feature facility based on hashicorp plugin
+
+* **`github.com/go-swagger/go-swagger/`** [go.mod] -- CLI front-end to go-openapi features
 * `github.com/go-swagger/go-swagger/cmd/swagger`
+* `github.com/go-swagger/go-swagger/cmd/swaggerui` - A graphical client for go-swagger
+* **`github.com/go-swagger/go-swagger/examples`** [go.mod] - Examples
 
 ### New components to support JSON
 
@@ -624,14 +642,21 @@ The main design goal are:
 * maintain the context of syntax errors, and the current parsing context to report higher level errors
 * can be used for other things than building documents: parsing or filtering streams, linting json
 * ensure strictness about JSON (parsing numbers, escaping unicode, etc), but may optionally be more lax
-* the primary use case (that guides the optimal path) is buffered JSON, with no assumption about the lifecycle of the buffer (hence copy is needed).
+* the primary use case (that defines the optimized path) is buffered JSON, with no assumption about the lifecycle of the buffer (hence copy is needed).
 
 This is similar in design to easyjson jlexer, but with a super reduced API instead: all the information is in the delivered token,
 so you only need to consume tokens to figure out what to do.
 
 Numbers remain strings. Tokens may be converted to numerical types if needed, this is the token consumer's call.
+
 Similarly, a json writer (again along the same lines as easyjson jwriter) is produced to marshal a stream of tokens into a stream of bytes.
 
+Possible extensions:
+
+* the lexer / parser expose a small interface so many different implementations may coexist
+* examples: lexer for JSON line-delimited (jsonl), text-delimited JSON, or other stream-oriented formatting of JSON
+* there is a contrib sub-modules to more easily introduce novel or experimental features without breaking anything else
+  
 #### JSON document node
 
 A hierarchy of nodes that represent JSON elements organized into arrays and objects in a memory-efficient way.
@@ -664,29 +689,61 @@ We keep the current concept that any YAML should be translated to JSON before be
 
 What about "verbatim" then? YAML is just too complex for me to drift into such details right now.
 
+Possible extensions:
+
+* the basic requirement on a JSON document is to support MarshalJSON and UnmarshalJSON, provide a builder side-type to support mutation
+* more advanced use-case may be supported by additional (possibly composed) types
+* examples:
+  * JSON document with JSONPath query support
+  * JSON document with other Marshal or Unmarshal targets, such as MarshalBSON (to store in MongoDB), MarshalJSONB (to store directly into postgres), ...
+
+To avoid undue propagation of dependencies to external stuff like DB drivers etc, these should come as an independant module.
+
+There is a contrib module to absorb novel ideas and experimentations without breaking anything.
+
 #### JSON document store
 
 A document store organizes a few blocks of memory to store (i) interned strings and (ii) JSON scalar values packed in memory.
 
 It serves as a cache when loading several JSON documents.
-It serves internal "slots" to a document to keep track of its values, in a more efficient way than a pointer.
+It serves internal "slots" as `Reference`s to a document to keep track of its values, in a more efficient way than a pointer.
 
+All the smart lies in how the reference (e.g. a uint32 or uint64) is used to locate a value of a given type in the memory block.
+The 
 A document store may be rather limited in size, e.g. 4 GB or so: we don't need an unlimited address space.
 
 > NOTE: this supersedes the document cache currently managed in `spec`
+
+Possible extensions:
+
+The interface of a document store is very simple:
+```go
+type Store interface {
+ Put(value Node) Reference
+ Get(Reference) Node
+}
+```
+
+It is possible to implement (possibly experiment in the contrib module) stores with different properties.
+
+Examples:
+* using different internal packing methods. Some could be inspired by other systems (e.g. JSON packing in sqllite, jsonpack, bson or some
+other representation that may be more suitable to convert into a specific backend)
+* extending to storage-backed cache and relieve memory limitations
+* ...
 
 ### Model generation
 
 Ideas:
 
 * self-sustained library
-* provided with a CLI for testing, experimenting or focused usage (same style as go-swagger, just more focused)
+* provided with a CLI for testing, experimenting, or focused usage (same style as go-swagger, just more focused)
 * ships with templates
 * reuses templates-repo
 * primary support is for golang, but I'd like to add protobuf just to prove the concept of multi-target code generation
 * keep the original objectives: clean code, readable, linter-friendly and godoc-friendly
 * inject much more customization with `x-go-*` tags
-* focused primarily on supporting jsonschema draft 4 to 2020, plus swagger v2 and OAI v3.x idioms
+* focused primarily on supporting JSON schema draft 4 to 2020, plus swagger v2 and OAI v3.x idioms
 
 Features outline:
 * support null, use of pointers
@@ -694,16 +751,39 @@ Features outline:
   * customizable rendering available locally or globally (e.g. with pattern matching rules) with the following options:
     * favor native types, assuming that zero-value vs null doesn't affect semantics (recommended approach)
     * use pointers with parsimony, whenever explicitly told to (e.g. x-go-nullable)
-    * generated structs are all "nullable" without resorting to a pointer (i.e. embed an "isNull bool" field)
+    * generated structs are all "nullable" without resorting to a pointer (i.e. embed an "isNuDefined bool" field)
+
+```go
+type Nullable[T any] struct {
+  isDefined bool
+  T
+}
+
+func (n Nullable[T]) IsNull() bool {
+  return !n.isDefined
+}
+
+func (n Nullable[T]) Value() T {
+  if n.isDefined {
+    return n.T
+  }
+
+  var zero T
+  return zero
+}
+```
+
 * polymorphic types (swagger v2), aka "inheritance" can be rendered in several ways
     * are supported for any kind of container, not just plain vanilla
     * with an interface type (default, like go-swagger currently does)
     * with embedded types on demand
-    * other designs?
+    * other designs? (contributed)
+
 * custom types
     * either wrapped (embedded structs) or imported as is (like now)
     * may use internal json document as a legit type (dev wants an opaque structure)
-     
+    * OrderedMaps or custom map implementations
+
 * marshaling/unmarshaling
     * option to support different JSON libraries - default remains the standard lib
     * option to generate code for our internal json parser, easyjson and perhaps a few others
@@ -711,13 +791,33 @@ Features outline:
  
 * validation
     * simplified interface: Validate(context.Context) error <- no strfmt specification (injected in context)
-    * option not to generate validation functions
+    * option not to generate validation functions (like now)
     * option to inject runtime validators (closure functions produced by schema analysis)
-    * option to generate UnmarshalValidate and MarshalValidate (has impac
+    * option to generate UnmarshalValidate and MarshalValidate (has impact on the choice for pointers etc)
     * implementation of "required": either delegate to UnmarshalValidate/MarshalValidate or post-unmarshaling by Validate()
 
  * oneOf, anyOf
-    * analysis determines if oneOf holds some mutually exlusive cases
+    * analysis determines if oneOf holds some mutually exclusive cases
+    * several available rendering designs: composition, private members with accessors
+    
  * allOf
     * keep type composition for most cases (e.g. identified as "serialization" schemas)
+    * propose the option to inline allOf members rather than composing types ("lifting")
     * support "validation only allOf" idiom
+    * support parts with common property names (i.e. inline & merge validations)
+  
+* contributed extensions
+    * pluggable extensions to the model generation logic (i.e. routes processing logic to plugin whenever some `x-*`extension is found
+    * contributed templates to support pluggable extensions
+
+### API generation
+
+Same modular and extensible approach as the one described for models.
+
+Features:
+* handlers generation
+* supporting files generation
+  * main server
+  * initialization
+
+* client generation 
