@@ -10,4 +10,4 @@ See [a few details](transactional-roundtrip/README.md)
 
 ## go-openapi reflections & design ideas
 
-[thoughts](go-openapi/README.MD)
+[thoughts](go-openapi/README.md)
