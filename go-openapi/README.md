@@ -74,18 +74,18 @@ Simplification has become an acute challenge. This is true for our codebase in g
 
 #### Why would I want to keep the same kompass?
 
-Simply because API-land is too vast to be covered by a framework.
-There are so many use-cases, so many opinions, so many ways to achieve similar things.
-Even though OpenAPI came as a way to unify a bit the practice of building a REST-like API, the field remain largely open.
+Simply because API land is too vast to be covered by a framework.
+There are so many use cases, so many opinions, so many ways to achieve similar things.
+Even though OpenAPI was created to unify the practice of building a REST-like API, the field remains largely open.
 
-I like the idea of a toolkit that simplifies a few things (boring things, highly specialized or technical things), but leaves it up
+I like the idea of a toolkit that simplifies a few things (boring things, highly specialized or technical things) but leaves it up
 to developers to decide about their design.
 
 #### Approach to refactoring
 
 There are a lot of jewels here and there. What I'd like to do is to split them apart.
 I am currently working at "salvaging" a few such nice bits of code by refactoring actions.
-A humble improvement, but hopefully it could help in a future more ambitious endeavor.
+It is a humble improvement, but hopefully it could help in a future more ambitious endeavor.
 
 Since keeping backward compatibility is important, this is primarily achieved by moving various sub-packages into modules.
 This would eventually lead to either new go-openapi repos or muti-modules mono-repos with the existing ones (ex: `swag` or `strfmt`).
@@ -123,7 +123,7 @@ This approach requires a few add-ons to deal with json schema:
 * $ref resolution was the most complex (even for draft v4) and is dealt with by the `spec` repo (not a good idea in retrospect)
 * other aspects of $ref were handed over to `jsonpointer` and `jsonreference`. Essentially, the intent is to support `struct`s
 
-A nice outcome of this approach was to be able to rapidly deliver a working API runtime for "untyped" APIs, i.e. stuff is validated and served
+As a nice outcome, this approach rapidly delivered a working API runtime for "untyped" APIs, i.e. stuff is validated and served
 dynamically based on the JSON spec, without any generated code. More explanations about this use case may be found [here](https://goswagger.io/go-swagger/tutorial/dynamic/).
 
 Real-world issues we faced with this are intimately bound to the design choices of the go language regarding data structures vs json.
@@ -135,8 +135,8 @@ The central issues in a nutshell:
 * forced trade-offs when deciding to use pointers rather than values in receiver go types
 * problems with keeping the order of keys when generating specs, docs, and basically everything where the author intended to see things appear in a given order
 * couldn't keep up with the creativity of the json schema committee, who have introduced many major evolutions since v4
-* couldn't keep up with generalized usage of $ref's in specs, untyped things in unexpected places (such as extension tags, ...)
-* dealing with union types (e.g. jsonschema declarations such as `type: [...]`, `anyOf`, `oneOf`, `allOf`, or the swagger v2 peculiar way
+* couldn't keep up with generalized usage of `$ref`'s in specs, untyped things in unexpected places (such as extension tags, ...)
+* dealing with union types (e.g. JSON schema declarations such as `type: [...]`, `anyOf`, `oneOf`, `allOf`, or the swagger v2 peculiar way
  of supporting inheritance.
 * degraded performances when doing anything (including running the generated API) with the standard lib
 
@@ -202,7 +202,7 @@ To move up to that stage, there are so many things that need to be reviewed and 
 
 As a maintainer and user, I've hit the following issues and may raise quite a few (constructive) criticisms:
 * CLI
-  1. the main intent of the tool is to expose a CLI user-interface, but there are too many built-in features
+  1. the main intent of the tool is to expose a CLI user interface, but there are too many built-in features
   2. the tool is highly customizable, but documentation about how to do so is scarce
   3. should improve the dockerized use case
   4. bloated/undocumented options
@@ -215,7 +215,7 @@ As a maintainer and user, I've hit the following issues and may raise quite a fe
      Perhaps it is just too hard currently to deal with custom templating.
   4. The analysis of swagger types is a bit confusing: using `analysis` was the goal, but instead we get a type resolver that is super-difficult to follow
   5. Model construction is super hard to follow. Almost nobody dares to mess with that part nowadays.
-  6. codegen is very difficult to test and test code coverage is not very significant (regarding templates).
+  6. generated code is very difficult to test and test code coverage is not very significant (regarding templates).
      We test "expected generated code" and only on a few occasions do we test the actual behavior of the generated program.
      All this testing is fine but eventually, it made the product more and more rigid as testing against expected generated statements generates a lot
      of impacts on tests even with minor changes in templates
@@ -465,6 +465,12 @@ Likely eventual fate of these repos: github archive.
 
 ### strfmt
 ### stubs
+
+A test fixtures and examples generator, driven by a spec.
+
+Never really worked.
+
+
 ### swag
 ### validate
 
@@ -539,15 +545,17 @@ A structure that would look something like with a new go-openapi/core github rep
 * `github.com/go-openapi/core` - Core go-openapi components
 * `github.com/go-openapi/core/docs` - Source of the go-openapi documentation site
  
-* **`github.com/go-openapi/core/json`** [go.mod]
-* `github.com/go-openapi/core/json/parser` - A fast JSON parser
-* `github.com/go-openapi/core/json/parser/contrib` [go.mod] - Contributed alternative parser implementations
-* `github.com/go-openapi/core/json/document` - An immutable, verbatim JSON document
-* `github.com/go-openapi/core/json/document/contrib` [go.mod] - Contributed alternative implementations of the json document
-* `github.com/go-openapi/core/json/document/jsonpath` - JSONPath expressions for a JSON document
-* `github.com/go-openapi/core/json/store` - A memory-efficient store for JSON documents
-* `github.com/go-openapi/core/json/store/contrib` [go.mod] - Contributed alternative implementations of the json document store
-  
+* **`github.com/go-openapi/core/json`** [go.mod] An immutable, verbatim JSON document and JSON schema
+* `github.com/go-openapi/core/json/lexers/default-lexer` - A fast JSON lexer
+* `github.com/go-openapi/core/json/types` - type definitions to support JSON
+* `github.com/go-openapi/core/json/lexers/contrib` [go.mod] - Contributed alternative parser implementations
+* `github.com/go-openapi/core/json/documents/contrib` [go.mod] - Contributed alternative implementations of the json document
+* `github.com/go-openapi/core/json/documents/jsonpath` - JSONPath expressions for a JSON document
+* `github.com/go-openapi/core/json/stores/default-store` - A memory-efficient store for JSON documents
+* `github.com/go-openapi/core/json/stores/contrib` [go.mod] - Contributed alternative implementations of the json document store
+* `github.com/go-openapi/core/json/writers/default-writer` - A fast JSON document writer
+* `github.com/go-openapi/core/json/writers/contrib` [go.mod] - Contributed alternative implementations of the json document writer
+
 * **`github.com/go-openapi/core/jsonschema`** [go.mod] - JSON schema implementation based on a json document (draft 4 to draft 2020)
 * `github.com/go-openapi/core/jsonschema/analyzer` - JSON schema specialized analyzers
 * `github.com/go-openapi/core/jsonschema/analyzer/common` - Schema analysis techniques common to all analyzers
@@ -656,12 +664,90 @@ Possible extensions:
 * the lexer / parser expose a small interface so many different implementations may coexist
 * examples: lexer for JSON line-delimited (jsonl), text-delimited JSON, or other stream-oriented formatting of JSON
 * there is a contrib sub-modules to more easily introduce novel or experimental features without breaking anything else
-  
+
+Location: `github.com/go-openapi/core/json/lexers/default-lexer`
+```go
+var _ &L{} types.Lexer
+
+type L struct {
+  _ struct{}
+}
+
+type Option func(*options)
+
+func New(buf []byte, opt ...Option) *Lexer { ...}
+func NewFromReader(r io.Reader, opt ...Option) *Lexer { ...}
+```
+ 
+Interface (from `github.com/go-openapi/core/json/types`):
+```go
+type Resettable interface{
+  // Reset resets the object to its default or zero value.
+  // This is useful for objects made available from a [sync.Pool].
+  Reset()
+}
+
+// WithErrState is the common interface for all types
+// which manage an internal error state.
+type WithErrState interface {
+  Ok() bool
+  Err() error
+}
+```
+
+```go
+type Lexer interface{
+  NextToken() Token
+  Resettable
+  WithErrState
+}
+```
+
 #### JSON document node
 
+
+```go
+type Document struct {
+  store types.Store
+  root  types.Node
+  err   error
+}
+
+type Context ... // text-context to report about errors etc
+
+func makeDocument(store Store, node Node) Document
+
+func (d *Document) Kind() types.NodeKind
+
+func (d *Document) MarshalJSON() ([]byte, error) {}
+func (d *Document) UnmarshalJSON([]byte) error {}
+func (d *Document) Decode(r io.Reader) error {}
+func (d *Document) Encode(w io.Writer) error {}
+
+func (d *Document) Key(k string) (Document, bool)
+func (d *Document) Elem(i int) (Document, bool)
+func (d *Document) KeysIterator() iter.Seq2[string,Document]
+func (d *Document) ElemsIterator() iter.Seq[Document]
+
+type Node struct {
+  kind NodeKind
+  value types.Value
+  children []Node
+  context Context
+}
+
+type Value struct {
+  kind ValueKind
+
+  s StringValue
+  n NumberValue
+  b BoolValue
+}
+```
 A hierarchy of nodes that represent JSON elements organized into arrays and objects in a memory-efficient way.
 
-All these are represented by go slices, not maps: ordering is maintained.
+All these are represented by go slices, not maps: ordering is maintained, shallow cloning of slice value doesn't require allocating new memory.
+
 All scalar content is stored in the document store (see below). Memory storage is shared among documents with similar content.
 In particular, by default, the document will intern strings for keys.
 
@@ -718,12 +804,49 @@ Possible extensions:
 
 The interface of a document store is very simple:
 ```go
+// uint64 version (TODO uint32 version).
+//
+// Reference packs a JSON value as a uint64 plus a reference to []byte located in the arena.
+//
+//  |0-3     | 4-15 | 16-23  | 24-63                       |
+//  | header | length        | offset: 0 - 2^40-1 = 1024 GB|
+//
+// Header
+// 0: null value
+// 1: false value
+// 2: true value
+// 3: small number (=<7 bytes): only strings longer than 7 require an arena slot
+// 4: small string (=<7 bytes): only numbers larger than 7 digits require an arena slot
+// 5: large number: offset points to arena slot for BCD-encoded []byte
+// 6: large string: offset points to arena slot for []byte
+//
+// length: single value up to 1GB
+// offset: 0-2^40 = 1024 GB
+//
+// Encoding
+// numbers: are encoded as BCD, cf. https://pkg.go.dev/github.com/yerden/go-util/bcd
+type Reference uint64
+
+func (r Reference) Value() types.Value {}
+func makeReference(v Value) Reference {}
+
 type Store interface {
- Put(value Node) Reference
- Get(Reference) Node
+ Put(value Value) Reference
+ Get(Reference) Value
+
+// TODO: keys interning
+
+Resettable
 }
 ```
-
+```go
+type Store struct {
+  sync.RWLock
+  next uint64
+  arena []byte
+  // interned keys ??
+}
+```
 It is possible to implement (possibly experiment in the contrib module) stores with different properties.
 
 Examples:
