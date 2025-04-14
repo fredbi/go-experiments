@@ -39,7 +39,7 @@ What about "verbatim" then? YAML is just too complex for me to drift into such d
         JSON document with JSONPath query support
         JSON document with other Marshal or Unmarshal targets, such as MarshalBSON (to store in MongoDB), MarshalJSONB (to store directly into postgres), ...
 
-To avoid undue propagation of dependencies to external stuff like DB drivers etc, these should come as an independant module.
+To avoid undue propagation of dependencies to external stuff like DB drivers etc, these should come as an independent module.
 
 ## Design
 
@@ -59,20 +59,36 @@ JSON document node
 type Document struct {
   store interfaces.Store
   root  Node
-  err   error
+  err   error // useful? or node err should be enough?
   documentOptions
 }
 
 type documentOptions struct {
+  decodeOptions
+  encodeOptions
+}
+
+type decodeOptions struct {
   captureContext bool
   lexerFactory func() lexers.Lexer
+  lexerFromReaderFactory func(io.Reader) lexers.Lexer
+  decodeHooks []hooks.Hook
+}
+
+type encodeOptions struct {
+  indent bool
+  indentation string
   writerFactory func() writers.Writer
+  writerFromWriterFactory func(io.Writer) writers.Writer
+  encodeHooks []hooks.Hook
 }
 
 // Option to tune a JSON document to your liking
 type Option func(*documentOptions)
 
 func WithKeepContext(enabled bool) Option
+func WithLexerFactory(func() lexers.Lexer) Option
+func WithWriterFactory(func() writers.Writer) Option
 func WithDecodeHooks(callbacks ...hooks.Hook) Option
 func WithEncodeHooks(callbacks ...hools.Hook) Option
 ```
@@ -84,17 +100,56 @@ func makeDocument(store Store, node Node) Document
 
 func (d *Document) Kind() types.NodeKind { return d.root.Kind() }
 
-func (d *Document) MarshalJSON() ([]byte, error) {}
-func (d *Document) UnmarshalJSON([]byte) error {
-  // create lexer from pool
-  lex := d.lexerFactory()
-  // consume tokens and build nodes in the document
-  var root Node
-  children := root.build(lex)
+func (d *Document) MarshalJSON() ([]byte, error) {
+  // create writer from pool: WithWriterFromPool( ...) instead of WithWriterFactory( ...)
+  jw,redeem := d.writerFactory()
+  defer redeem()
+
+  root.encode(w,d.documentEncodeOptions)
+
+  return jw.Bytes(), jw.Error()
 }
 
-func (d *Document) Decode(r io.Reader) error {}
-func (d *Document) Encode(w io.Writer) error {}
+func (d *Document) UnmarshalJSON([]byte) error {
+  // create lexer from pool: WithLexerFromPool(...)
+  lex, redeem := d.lexerFactory()
+  defer redeem()
+
+  d.err = nil
+  d.root.Reset()
+
+  // consume tokens and build nodes in the document
+  root.decode(lex,d.documentDecodeOptions)
+
+  return lex.Error()
+}
+
+/*
+Possible alternative design:
+type Decoder struct {}
+type Encoder struct {}
+*/
+
+func (d *Documen) Decode(r io.Reader) error {
+  lex := d.lexerFromReaderFactory(r)
+  d.err = nil
+  d.root.Reset()
+
+  root.decode(lex,d.documentDecodeOptions)
+
+  return lex.Error()
+}
+
+func (d *Document) Encode(w io.Writer) error {
+  // create writer from pool: WithWriterFromWriterFromPool(...)
+  jw, redeem := d.writerFromWriterFactory(w)
+  defer redeem()
+
+  root.encode(jw,d.documentEncodeOptions)
+
+  return jw.Bytes(), jw.Error()
+}
+*/
 
 // Key returns the document located under key k, or false if this key is not present.
 func (d *Document) Key(k string) (Document, bool)
@@ -108,8 +163,19 @@ func (d *Document) ElemsIterator() iter.Seq[Document]
 // Get a JSON [Pointer] inside this [Document], or false if the pointer cannot be resolved
 func (d Document) Get(p Pointer) (Document, bool)
 
-func (d *Document) Reset() {}
-func (d Document) String() string { /* string representation of a document, like MarshalJSON, but returns a string */}
+func (d *Document) Reset() {
+  d.root.Reset()
+  d.err = nil
+  d.Context.Reset()
+}
+
+func (d Document) String() string {
+  /* string representation of a document, like MarshalJSON, but returns a string */
+  b, _ := d.MarshalJSON()
+
+  return string(b)
+}
+
 func (d Document) Ok() bool { return d.err == nil }
 func (d Document) Err() error { return d.err }
  
@@ -157,23 +223,57 @@ type Node struct {
   kind NodeKind
   value Value // ValueKind for objects and arrays is NullValue
   children []Node // objects and array have children, nil for scalar nodes
-  ctx Context // the error context (maybe use pointer here?) 
+  ctx Context // the error context (maybe use a pointer here?) 
   keysIndex map[string]int // lookup index for objects, so Key() finds a key in constant time. Refers to the index of the Node in children.
 }
 
 func (n node) Context() Context { // node context }
-func (n Node) build(l interface.Lexer, opts documentOptions) []Node {
+
+func (n Node) decode(l lexers.Lexer, opts decodeOptions) (nodes []Node) {
   // recursively build nodes
   // very much like easyjon unmarshaling operates
 
+  // inject hooks
+  switch n.kind {
+    ...
+  }
+  if !l.Ok() {
+    return nodes
+  }
+  // object
+  ...
+  // array
+  for _, child := range n.children {
+    elements = append(elements, child.decode(l, opts)...)
+    if !l.Ok() {
+      return nodes
+    }
+    ...
+  }
   // errors are trapped in the context
 
-  // Q: do we want to trap only lexing errors in the context? what about higher level errors?
+  // Q: do we want to trap only lexing errors in the context? what about higher-level errors?
   // A: nah. We need to capture the context systematically, but only when told to do so.
 }
 
-func (n Node) Key(k string) (Document, bool) // always false if kind != NodeKindObject
-func (n Node) Elem(i int) (Document, bool) // always false if kind != NodeKindArray
+func (n Node) encode(w writers.Writer, opts encodeOptions) []Node {
+  // again very much like easyjson node traversal
+}
+
+var emptyDocument = Document{}
+
+func (n Node) Key(k string) (Document, bool) {  // always false if kind != NodeKindObject
+  if n.kind != NodeKindObject {
+    return emptyDocument, false
+  }
+
+  return n.children[n.keysIndex[k]]
+}
+
+func (n Node) Elem(i int) (Document, bool) { // always false if kind != NodeKindArray
+  ...
+}
+
 func (n Node) KeysIterator() iter.Seq2[string,Document] // nil if kind != NodeKindObject
 func (n Node) ElemsIterator() iter.Seq[Document] // nil if kind != NodeKindArray
 func (n Node) Value() (Value, bool) {} // always false if kind != NodeKindScalar
@@ -205,7 +305,7 @@ func (v StringValue) String() (string,bool) {}
 
 func (v NumberValue) Number() (string,bool) {}
 
-// checks if supported by native types (limited to 64 bits, let the caller determined if small receivers are needed)
+// checks if supported by native types (limited to 64 bits, let the caller determine if small receivers are needed)
 func (v NumberValue) IsInteger() bool {}
 func (v NumberValue) IsNegative() bool {}
 func (v NumberValue) IsInt64() bool {}
@@ -229,7 +329,7 @@ type BoolValue bool
 ```
 ## Typed documents
 
-The `json` package may expose a number of restricted types of documents. At the moment, there is:
+The `json` package may expose a few restricted types of documents. At the moment, there is:
 
 ```go
 // Object is a JSON document of type object
@@ -247,6 +347,18 @@ type Array struct {
 
 func (o Object) xx // TODO: how to restrict that this unmarshals only objects?
 // add Hooks?
+
+type PositiveInteger struct {
+  Document
+}
+
+type NonNegativeInteger struct {
+  Document
+}
+
+type StringOrArray struct {
+  Document
+}
 ```
 
 ## Builder
