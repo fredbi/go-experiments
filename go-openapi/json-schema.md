@@ -77,8 +77,8 @@ type Metadata struct {
 
 // StringsValidations describe all schema validations available for the string type
 type StringValidations struct {
-  minLength json.IntegerValue
-  maxLength json.IntegerValue
+  minLength json.NonNegativeIntegerValue
+  maxLength json.NonNegativeIntegerValue // >=0
   pattern json.StringValue
 }
 
@@ -87,27 +87,34 @@ type NumberValidations struct {
   exclusiveMinimum json.BoolValue
   maximum json.NumberValue
   exclusiveMaximum json.BoolValue
-  multipleOf json.NumberValue
+  multipleOf json.PositiveNumberValue // > 0
 }
 
 type ObjectValidations struct {
   minProperties json.IntegerValue
   maxProperties json.IntegerValue
   patternProperties json.Document // Object
-  additionalProperties json.BoolValue
-  additionalPropertiesSchema Schema
+  additionalProperties SchemaOrBool
   requiredProperties []json.StringValue
 }
 
 type ArrayValidations struct {
-  items json.SchemaOrArray // Document type exposed by json
-  minItems json.PositiveInteger
-  maxItems json.PositiveInteger
+  items SchemaOrArrayOfSchemas // Document type exposed by json
+  minItems json.NonNegativeInteger
+  maxItems json.NonNegativeInteger
   uniqueItems json.BoolValue
 }
 
 type TupleValidations struct {
-  additionalItems json.BoolOrSchema
+  additionalItems SchemaOrBool
+}
+
+type SchemaOrBool struct {
+  json.Document
+}
+
+type SchemaOrArrayOfSchemas struct {
+  json.Document
 }
 
 // Reference implements the JSON schema `$ref` applicator.
