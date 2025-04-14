@@ -5,12 +5,12 @@ This analyzes a JSON schema document specifically with the intent to validate JS
 ```
 type DocValidatorFunc func(d json.Document) error
 
-// Schema is an analyzed schema, with intent to validate data
+// Schema is an analyzed schema, with the intent to validating data
 type Schema struct {
   schema jsonschema.Schema
 }
 
-type SchemaHas [32]byte
+type SchemaHash [32]byte
 
 func New(s jsonschema.Schema, opts ...Option) Schema {
   return Schema {
@@ -30,11 +30,17 @@ func (a *Analyzer) Analyze() error {
 func (a *Analyzer) DocValidator() DocValidatorFunc { }
 
 // ValidationAST returns an AST to construct validators.
-func (a *Analyzer) ValidationAST() AST { ... }
+func (a *Analyzer) ValidationAST() ast.Tree { ... }
 
 // CanonicalSchema returns the canonicalized JSON schema with its unique 32-bits hash
 func (a *Analyzer) CanonicalSchema() (SchemaHash, jsonschema.Schema) {}
+// 
+// Package `expressions`
 
+// Expression is a validation expression
+type Expression struct {
+  nodes []ExpressionNode
+}
 
 ```
 
@@ -45,23 +51,155 @@ We define a "canonical form" of a JSON schema in order to:
 * factorize validators whenever possible
 * be able to refactor and optimize a validator, so it becomes relatively immune to schema authoring style
 
+This canonical form is built while building an AST (see below). It provides a JSON schema-compatible view of the AST.
+
+The canonical form is required to build fast validators and is desirable (perhaps not required) to contribute to the accuracy of other aspects of model code gen.
+
 Rules for a canonical schema:
+* warning annotations: x-go-analysis-warn: ["{warn code}", "{description}"]
+* path annotations: all data items in schema are annotated with their expected hierarchical path (JSON pointer) in JSON data, e.g. "x-go-analysis-path: /items/1"
+* empty schemas are always converted with a boolean true  {} => true
+* Likewise, the structure 'not: {}' becomes: false
 * `type`
   * `type` is required. If missing from the original schema, this means `type`: [ array, object, string, number, bool, null]
   * `type` arrays are not sensitive to the order of types. We reorder such an array from most specific to less specific: [ null, bool, number, string, object, array ]
   * `type` is transformed into a single value, `type` arrays are rearranged in a child `oneOf` clause (since type clauses are mutually exclusive)
-  * Outcome: a canonical schema always have one and only on `type` 
+  * Outcome: a canonical schema always have one and only one `type` 
 * Keys
   * the order of keys in a schema object does not contribute to the determination of the unique hash.
   * The hash is not sensitive to key ordering, but the canonicalized version of the schema keeps the original order of keys
   * Outcome: schemas with the same hash (same validation rules) may have a different string representation
-* Metadata: title, comments, descriptions do not contribute to the hash. These are kept in the canonicalized schema, but irrelevant for validation. Use WithMetadataStripped(true) to remove them.
+* Metadata: title, comments, and descriptions do not contribute to the hash. These are kept in the canonicalized schema, but irrelevant for validation. Use WithMetadataStripped(true) to remove them.
 * $ref
-  * All $ref are rewritten in full to remove all need for "syntaxic sugar" such as "$id", "$dynamicAnchor", etc. These keywords do not contribute to the computation of
+  * All $ref's are rewritten in full to remove all need for "syntactic sugar" such as "$id", "$dynamicAnchor", etc. These keywords do not contribute to the computation of
     the unique hash: only the hash of the resolved schema matter.
-  * All schemas in $ref are recursively canonicalized. Two different $ref that yield the same Hash are consider equivalent.
-  * In the resulting canonical schema, the first explored $ref with a given hash is used (deterministic output)
+  * All schemas in $ref are recursively canonicalized. Two different $ref that yield the same Hash are considered equivalent.
+  * In the resulting canonical schema, the first explored $ref with a given hash is used (deterministic output). If anonymous schemas compete with named schemas, the first named schema found takes over.
+* redundant validations
+  * validations that do not apply to the given type of schema are removed (raise warning)
+* type-specific validations
+  * a schema that mixes validations for different types is subject to a rewrite: if the schema supports multiple types (see `type` above) it becomes split into `oneOf` schemas of one and only one type
+  * validations that do not apply to each type are pruned
+  * validations that apply to several types are kept
+  * validations that apply to all members in the `oneOf` clause are lifted
+  * if null is allowed, the member in the oneOf with type: null cannot have any validation attached. This is annotated as "x-go-analysis-may-be-null: true"
+* enum: enum values that do not pass other validations at the same level are pruned (raise warning)
+  * if all enum values are pruned, the schema resolves as false.
+* jsonschema version-specific behavior (i.e. deprecated stuff):
+  * the canonical schema is always represented in the latest supported version of JSON schema (i.e. draft 2020)
+  * deprecated features are rewritten
+  * an annotation is left to mark the change, x-go-canonical-deprecation: "old construct". These annotations are ignored for hash computation.
+* validation expressions
+  * any validation expression returns either true or false
+  * validation clauses constitute an expression with an implied "AND" logical
+  * validations inside allOf imply an expression like ( member1 AND member2 AND ...)
+  * validations inside anyOf imply an expression like ( member1 OR member2 OR ...)
+  * validations inside oneOf imply ( member1 XOR member2 XOR ...)
+  * "not" implies NOT ( member )
+  * for any given schema, we can find the equivalent expression with the operators: (, ), AND, OR, XOR, NOT  
+  * expressions that are always false or always true are simplified away:
+    * x AND false = false, x AND true = x, x OR false = x, x OR true = true, x XOR false = x, x XOR true = NOT x; not false = true, not true = false 
+* inline schemas in allOf, oneOf, anyOf are all replaced by $ref. The name of the $ref is generated from the path of the parent. Such $ref's are annotated as anonymous: x-go-analysis-anonymous-ref: true.
+  and might disappear after simplification by unique hash
+* mutually exclusive members in allOf result in the allOf to be always false
+* mutually exclusive members in anyOf are transformed into oneOf clauses. Exemple anyOf: [ member1, member2, member3] where member1 AND member2 = false becomes:
+  * anyOf: [ oneOf: [member1, member2], member3 ] 
+* mutually exclusive members in oneOf are annotated to keep that information.
+  * The following json schema annotation is added to mark that fact (as of draft 2020, annotations are allowed with $ref):
+  * Ex: oneOf: [ {type: string}, {type: number}, {type: integer} ]  => string AND number = false, string AND integer = false, number AND integer != false
+  * TODO: wrong example!! $ref rewrite should only apply to composite members (objects or arrays, not primitive types)
+  * => oneOf: [ {$ref: '#/xyz', x-go-analysis-mutually-exclusive: [0,2]}, {$ref: '#/abc', x-go-analysis-mutually-exclusive:[0,1]}, {$ref: '#/bcd', x-go-analysis-mutually-exclusive: [0,2]]
+  * Ex: oneOf: [ string, number ]  => string AND number = false => oneOf: [ string, number ], x-go-mutually-exclusive: [ 0,1 ]
+  * These annotations are relevant and used for hash computation
+* order of validations: principle most specific (or fastest check) first (fail early principle). E.g. type always comes first. If we have enum, then start with that.
+* check numeric validations:
+  * minimum <[=] value <[=] maximum is evaluated for compatibility (may be simplified to false if incompatible and raise warning)
+  * whenever valid, such ranges are annotated with the tuple: 'x-go-analysis-numeric-range: [minimum, exlusiveMinimum[true|false], maximum,exclusiveMaximum]
+  * range and implied type: if maximum < (range of a type), add the "format" clause to the numerical type to reduce the type (i.e. "format": "int32", ...). 
+  * check compatibility with numerical format / possibly truncate range to the bound implied by format
+  * if the min/max range is redundant with format, replace min/max by format (keep the range annotation, add the "x-go-analysis-implied-format: true" annotation)
+  * multipleOf:
+    * type implied by multipleOf:
+      * a number multipleOf an integer is reduced to type integer
+      * integer multipleOf a non-integer implies that the multipleOf may be rewritten to use an integer multiple (raise warning)
+        * Ex: {type: integer, multipleOf: 1.1} => {type: integer, multipleOf: 11}
+        * Ex: {type: integer, multipleOf: 0.5} => {type: integer}
+        * Ex: {type: integer, multipleOf: 0.8} => {type: integer, multipleOf: 4} TODO: find the explicit rule, not just examples
+* check string validations
+  * minLength, maxLength checked for compatibility, if minLength = maxLength add annotation "x-go-analysis-string-length-equals: {minLength}"
+  * recognize simple idioms: minLength > 0 only is annotated "x-go-analysis-string-not-empty: true"
+  * pattern:
+    * check regexp idiom compatibility: if compatible with RE2, annotate "x-go-analysis-pattern-compatibility: [re2]", if pure ECMA regexp, add ecma in the compatible list
+    * if doesn't compile, raise error (?) or warn
+    * recognize simple regexp patterns: e.g '/^.+$/' (not empty), plus some other (alpha chars, word chars, no blank space...). For each recognized pattern,
+      we add the corresponding annotation, to instruct implementations to pick a faster alternative than applying a regexp
+  * string formats:
+    * for each format, we may check redundant validations (e.g. format: "date-time" and minLength>0 is redundant: format is sufficient)
+    * TODO: for each supported type, the strfmt registry should export a list of short-circuit validations, e.g. fixed length for uuid, date etc.
+* array validations: maxItems, minItems (if both, check range validity and annotate with "x-go-analysis-array-len-range: [minLen,maxLen]"
+* tuples: explicit tuples with x-go-analysis-tuple: true, if additional items are supported annotate this
+* object validations
+  * check min/maxProperties, if range "x-go-analysis-object-len-range: [minProperties,maxProperties]"
+  * "properties" and "required"
+    * properties in the require array are reordered to reflect the order of their appearance in the object definition
+    * if the require array contains undefined properties, they are appended to the properties object with schema: true
+    * a key in properties means: "if the property shows up, it must validate this schema" =
+        * (property missing) OR (property present and validate schema) 
+      * so the validation of NOT {schema property} (not required) is:
+        *      NOT ((property missing) OR (property present and validate schema))
+        *  <=> (property present) AND NOT (property present and validate schema)
+        *  <=> (property present) AND (NOT (property present) OR NOT validate schema)
+        *  <=> (property present) AND (property absent OR NOT validate schema)
+        *  <=> (property present AND property absent) OR (property present AND NOT validate schema))
+        *  <=> false OR (property present AND NOT validate schema)
+        *  <=> property present AND NOT validate schema
+        *  <=> required: [{property}, {property}: {not: {schema}}
+    *        NOT {schema property} {required} translates as:
+      *  <=> NOT (property present and validate schema)
+      *  <=> (property absent} OR NOT validate schema
+      *  {property}: {not {schema}} and removed from the required array
+  * if addditionalProperties are supported annotate this
+    * not additionalProperties is complicated ...
+    * not additionalItems is complicated ...
+* overlapping properties in allOf/anyOf/oneOf constructs : TODO
+* default value:
+  * raise warning if default doesn't validate the schema
+* hash: schemas are annotated with their unique hash: x-go-analysis-hash: "hex hash string"
+* expression development by path: for each data path, expressions are simplified (factorized with AND/developed with OR, NOT simplified)
+  * raise warning for data paths that resolve to "false" (data cannot be validated)
+  * raise warning for data paths that resolve to "false" unless "null" (non-null data cannot be validated): simplify as schema "type: null" (keep nested annotations)
+* if / then / else: TODO
+* dependentSchema / dependentRequired: TODO
 
 ## Validation AST
 
+Package `validation-analyzer/ast` 
+
 This builds the validation tree to apply on some input JSON data - it describes validations with abstract operators.
+
+```go
+type Tree struct {
+  root Node
+}
+
+// Walk an AST tree in a depth-first, left to right manner
+func (t Tree) Walk(apply func(*Node) error)
+
+type NodeKind uint16
+
+const (
+  NodeKindNull NodeKind = iota
+
+)
+
+type ASTNode struct {
+  kind ASTNodeKind
+  path []string
+  expression expressions.ValidationExpression
+  children []Node // child paths
+}
+
+func (n ASTNode) Kind() ASTNodeKind { ... }
+
+```
+
