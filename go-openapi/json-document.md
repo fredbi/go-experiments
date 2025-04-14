@@ -53,14 +53,32 @@ The `Document` acts lazily: strings and number remain [stores.Reference]` or `[]
 
 > TODO: rename stores.Reference to stores.Handle as it may sow confusion with JSON References.
 
-JSON document node
+```go
+// DocumentFactory receives the desired settings to produce [Document]s in an efficient way.
+type DocumentFactory struct {
+    documentOptions
+}
+
+NewDocumentFactory(opts ...Option) *DocumentFactory {}
+
+// Document produces a Document with the factory settings
+func (f *DocumentFactory) Document() Document  { ... }
+
+// preset factories -> perhaps in a different package, e.g. "presets", or "documents"
+func ObjectDocument() Object
+func ArrayDocument() Array
+func PositiveIntegerDocument() // ??
+func PositiveNumberDocument() // ??
+func NonNegativeIntegerDocument() // ?? 
+```
+
+document factory -> document -> JSON document node
 
 ```go
 type Document struct {
   store interfaces.Store
   root  Node
   err   error // useful? or node err should be enough?
-  documentOptions
 }
 
 type documentOptions struct {
@@ -169,8 +187,11 @@ func (d *Document) Reset() {
   d.Context.Reset()
 }
 
+// String representation of a document, like MarshalJSON, but returns a string.
+//
+// Not specifically optimized: avoid using it for very large documents.
 func (d Document) String() string {
-  /* string representation of a document, like MarshalJSON, but returns a string */
+  /*  */
   b, _ := d.MarshalJSON()
 
   return string(b)
@@ -229,7 +250,13 @@ type Node struct {
 
 func (n node) Context() Context { // node context }
 
-func (n Node) decode(l lexers.Lexer, opts decodeOptions) (nodes []Node) {
+func (n Node) decode(l lexers.Lexer, opts decodeOptions) (nodes []Node) { // replace by func defaultDecode(l lexer.Lexer) (nodes []Node)
+  // TODO: split in parts that may interrupted with hooks
+  // if hooks are defined, replace the default decode by a closure that injects the desired hooks and options
+  // same for encode()
+
+  // this way, options (incl. hooks) are included at factory build time and code paths remain optimized when options allow that.
+
   // recursively build nodes
   // very much like easyjon unmarshaling operates
 
