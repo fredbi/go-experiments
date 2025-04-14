@@ -622,6 +622,7 @@ A structure that would look something like with a new go-openapi/core github rep
 * `github.com/go-openapi/core/swag/mangling` - Name mangling to support code generation
 * `github.com/go-openapi/core/swag/stringutils`
 * `github.com/go-openapi/core/swag/yamlutils` - Utilities to deal with YAML
+* `github.com/go-openapi/core/swag/cli` - Utilities to deal with command line interfaces
 * `github.com/go-openapi/core/swag/jsonutils/adapters` - JSON adapters to plug in different JSON libraries at runtime
 
 * **`github.com/go-openapi/core/validate`** [go.mod] - Data validation helpers
@@ -713,11 +714,11 @@ type Document struct {
   err   error
 }
 
-type Context ... // text-context to report about errors etc
+type Context struct {...} // text-context to report errors etc
 
 func makeDocument(store Store, node Node) Document
 
-func (d *Document) Kind() types.NodeKind
+func (d *Document) Kind() types.NodeKind { return d.root.Kind() }
 
 func (d *Document) MarshalJSON() ([]byte, error) {}
 func (d *Document) UnmarshalJSON([]byte) error {}
@@ -729,9 +730,33 @@ func (d *Document) Elem(i int) (Document, bool)
 func (d *Document) KeysIterator() iter.Seq2[string,Document]
 func (d *Document) ElemsIterator() iter.Seq[Document]
 
+func (d Document) Get(p Pointer) (Document, bool)
+
+func (d *Document) Reset() {}
+func (d Document) Ok() bool { return d.err == nil }
+func (d Document) Err() error { return d.err }
+ 
+// Pointer implements a JSON pointer
+type Pointer struct {
+  path []string // TODO: interned?
+  Resettable
+}
+
+func (p Pointer) Path() string { return strings.Join(p.path,"/") }
+
+type NodeKind uint8
+const (
+  NodeKindNull NodeKind = iota
+  NodeKindString
+  NodeKindNumber
+  NodeKindBool
+  NodeKindObject
+  NodeKindArray
+)
+
 type Node struct {
   kind NodeKind
-  value types.Value
+  value Value
   children []Node
   context Context
 }
@@ -739,14 +764,41 @@ type Node struct {
 type Value struct {
   kind ValueKind
 
+  // ScalarValue
   s StringValue
-  n NumberValue
+  n NumberValue  // TODO: add IntegerValue 
   b BoolValue
 }
+
+func (v BoolValue) Bool() (bool,bool) {}
+func (v StringValue) String() (string,bool) {}
+
+func (v NumberValue) Number() (string,bool) {}
+func (v NumberValue) IsInteger() bool {}
+func (v NumberValue) IsNegative() bool {}
+func (v NumberValue) Int64() (int64,bool) {}
+func (v NumberValue) Uint64() (uint64,bool) {}
+func (v NumberValue) Float64() (float64,bool) {}
+func (v NumberValue) BigInt() (big.Int,bool) {}
+func (v NumberValue) BigRat() big.Rat {} 
+
+type StringValue []byte
+type NumberValue []byte
+type BoolValue bool
+
+type Builder struct {
+  Document
+}
+
+func (b Builder) WithObject() Builder {}
+func (b Builder) AddElement() Builder {}
+func (b Builder) AddKey(string, Node) Builder {}
+func (b Builder) Document() (Document, error) {}
+...
 ```
 A hierarchy of nodes that represent JSON elements organized into arrays and objects in a memory-efficient way.
 
-All these are represented by go slices, not maps: ordering is maintained, shallow cloning of slice value doesn't require allocating new memory.
+All these are represented by go slices, not maps: ordering is maintained, and shallow cloning of slice value doesn't require allocating new memory.
 
 All scalar content is stored in the document store (see below). Memory storage is shared among documents with similar content.
 In particular, by default, the document will intern strings for keys.
@@ -802,7 +854,20 @@ A document store may be rather limited in size, e.g. 4 GB or so: we don't need a
 
 Possible extensions:
 
-The interface of a document store is very simple:
+The interface of a document store is very simple. Essentially, this is a cache:
+```go
+type Store interface {
+  Put(value Value) Reference
+  Get(Reference) Value
+
+  Loader() func(string) ([]byte,error)
+
+  // TODO: keys interning
+
+  Resettable
+}
+```
+
 ```go
 // uint64 version (TODO uint32 version).
 //
@@ -818,7 +883,7 @@ The interface of a document store is very simple:
 // 3: small number (=<7 bytes): only strings longer than 7 require an arena slot
 // 4: small string (=<7 bytes): only numbers larger than 7 digits require an arena slot
 // 5: large number: offset points to arena slot for BCD-encoded []byte
-// 6: large string: offset points to arena slot for []byte
+// 6: large string: offset points to arena slot for []byte (possibly compressed)
 //
 // length: single value up to 1GB
 // offset: 0-2^40 = 1024 GB
@@ -829,31 +894,124 @@ type Reference uint64
 
 func (r Reference) Value() types.Value {}
 func makeReference(v Value) Reference {}
-
-type Store interface {
- Put(value Value) Reference
- Get(Reference) Value
-
-// TODO: keys interning
-
-Resettable
-}
 ```
+
 ```go
-type Store struct {
+type ReferenceConstraint interface {
+  ~uint32
+  ~uint64
+}
+
+type Store[T ReferenceConstraint] struct {
   sync.RWLock
   next uint64
   arena []byte
   // interned keys ??
+  // zlib dictionary
+  dict []byte
 }
+
+func New(opts ...Option) *Store { }
+
+type Option func(*options)
+
+// withCompress enables compression of strings longer than threshold, using a zlib compression level.
+//
+// By default, compression is disabled.
+//
+// Example:
+// WithCompress(1024, zlib.BestSpeed) will compress all strings of 1024 or more bytes to be compressed internally in the Store.
+// For best compression, the zlib dictionary is shared among all documents held by the Store.
+func WithCompress(threshold uint, level int) Option {}
+func WithPreallocatedArena(size uint64) Option {}
+
+// WithLoader specifies a document loader for the Store.
+//
+// The default is [loading.JSONDoc].
+func WithLoader(func(url string) ([]byte, error)
+
 ```
 It is possible to implement (possibly experiment in the contrib module) stores with different properties.
 
 Examples:
 * using different internal packing methods. Some could be inspired by other systems (e.g. JSON packing in sqllite, jsonpack, bson or some
 other representation that may be more suitable to convert into a specific backend)
-* extending to storage-backed cache and relieve memory limitations
+* extending to storage-backed cache and relieving memory limitations
 * ...
+
+#### JSON schema
+
+The JSON schema type extends the JSON document.
+
+```go
+type Option func(*options)
+
+func WithStrictVersion(enabled bool) Option {}
+func 
+```
+
+```go
+type NamedSchema {
+  Key string
+  Schema
+}
+
+type Schema struct {
+  json.Document
+
+  ref Reference // TODO???
+  types []json.NodeKind
+  properties []NamedSchema
+  allOf []Schema
+  anyOf []Schema
+  oneOf []Schema
+  not Schema
+
+  // schema metadata
+  Version  // version, minCompatibleVersion, maxCompatibleVersion
+  Metadata // ID, $id, description, $comment...
+
+  // validation clauses
+  StringValidations
+  NumberValidations
+  ArrayValidations
+  ObjectValidations
+}
+
+func (s *Schema) UnmarshalJSON([]byte) error {}
+func (s *Schema) Decode(io.Reader) error {}
+
+func (s *Schema) decode() error {
+// Lexer etc -> validate on the go the JSON schema structure
+}
+
+func (s Schema) Properties() []Schema { return s.properties }
+...
+
+type StringValidations struct {
+  minLength json.IntegerValue
+  maxLength json.IntegerValue
+  ..
+}
+type Reference struct {
+  sync.RWLock
+
+  pointer json.Pointer
+
+  cached *Schema
+}
+
+func (r *Reference) Resolve(context.Context) (Schema, error) {}
+func (r *Reference) Expand(context.Context) (Schema, error) {}
+
+type Builder {
+  Schema
+}
+
+func (b *Builder) WithProperties(...NamedSchema) Builder {}
+func (b *Builder) WithAllOf(...Schema) Builder {}
+func (b *Builder) Schema() (Schema, error) {}
+```
 
 ### Model generation
 
