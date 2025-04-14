@@ -629,6 +629,8 @@ A structure that would look something like with a new go-openapi/core github rep
 
 * **`github.com/go-openapi/core/plugin`** [go.mod] - Pluggable feature facility based on hashicorp plugin
 
+Perhaps move that one to go-openapi?
+
 * **`github.com/go-swagger/go-swagger/`** [go.mod] -- CLI front-end to go-openapi features
 * `github.com/go-swagger/go-swagger/cmd/swagger`
 * `github.com/go-swagger/go-swagger/cmd/swaggerui` - A graphical client for go-swagger
@@ -730,6 +732,7 @@ func (d *Document) Elem(i int) (Document, bool)
 func (d *Document) KeysIterator() iter.Seq2[string,Document]
 func (d *Document) ElemsIterator() iter.Seq[Document]
 
+// Get a JSON [Pointer] inside this [Document]
 func (d Document) Get(p Pointer) (Document, bool)
 
 func (d *Document) Reset() {}
@@ -747,19 +750,34 @@ func (p Pointer) Path() string { return strings.Join(p.path,"/") }
 type NodeKind uint8
 const (
   NodeKindNull NodeKind = iota
-  NodeKindString
-  NodeKindNumber
-  NodeKindBool
+  NodeKindScalar
   NodeKindObject
   NodeKindArray
 )
 
+type ValueKind uint8
+const (
+  ValueKindNull ValueKind = iota
+  ValueKindString
+  ValueKindNumber
+  ValueKindInteger
+  ValueKindBool
+}
+
 type Node struct {
   kind NodeKind
-  value Value
-  children []Node
+  value Value // ValueKind for objects and arrays is NullValue
+  children []Node // objects and array have children, nil for scalar nodes
   context Context
+  keysIndex map[string]int // lookup index for objects
 }
+
+
+func (n Node) Key(k string) (Document, bool) // always false if kind != NodeKindObject
+func (n Node) Elem(i int) (Document, bool) // always false if kind != NodeKindArray
+func (n Node) KeysIterator() iter.Seq2[string,Document] // nil if kind != NodeKindObject
+func (n Node) ElemsIterator() iter.Seq[Document] // nil if kind != NodeKindArray
+func (n Node) Value() (Value, bool) {} // always false if kind != NodeKindScalar
 
 type Value struct {
   kind ValueKind
@@ -941,13 +959,14 @@ other representation that may be more suitable to convert into a specific backen
 
 #### JSON schema
 
-The JSON schema type extends the JSON document.
+The JSON schema type extends the JSON document. This type supports all published JSON schema versions (from draft 4 to draft 2020).
 
 ```go
 type Option func(*options)
 
 func WithStrictVersion(enabled bool) Option {}
-func 
+func WithRequiredVersion(JSONSchemaVersion) Option {}
+finc WithHooks(hooks ...Hook) Option {}
 ```
 
 ```go
@@ -983,6 +1002,10 @@ func (s *Schema) Decode(io.Reader) error {}
 
 func (s *Schema) decode() error {
 // Lexer etc -> validate on the go the JSON schema structure
+...
+s.err = s.check()
+
+return s.err
 }
 
 func (s Schema) Properties() []Schema { return s.properties }
@@ -1011,6 +1034,19 @@ type Builder {
 func (b *Builder) WithProperties(...NamedSchema) Builder {}
 func (b *Builder) WithAllOf(...Schema) Builder {}
 func (b *Builder) Schema() (Schema, error) {}
+```
+
+Hooks are mechanism to customize a schema. This is used for example to derive the OpenAPI definition of a schema from the standard JSON schema.
+
+```go
+type Hook func(*schemaHooks)
+
+type schemaHookFunc func(s *Schema) error
+type schemaHooks struct {
+  beforeKey,afterKey,beforeElem,afterElem,beforeValidate,afterValidate  schemaHookFunc
+}
+
+
 ```
 
 ### Model generation
