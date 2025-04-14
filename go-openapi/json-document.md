@@ -71,6 +71,10 @@ type documentOptions struct {
 
 // Option to tune a JSON document to your liking
 type Option func(*documentOptions)
+
+func WithKeepContext(enabled bool) Option
+func WithDecodeHooks(callbacks ...hooks.Hook) Option
+func WithEncodeHooks(callbacks ...hools.Hook) Option
 ```
 
 ```go
@@ -105,6 +109,7 @@ func (d *Document) ElemsIterator() iter.Seq[Document]
 func (d Document) Get(p Pointer) (Document, bool)
 
 func (d *Document) Reset() {}
+func (d Document) String() string { /* string representation of a document, like MarshalJSON, but returns a string */}
 func (d Document) Ok() bool { return d.err == nil }
 func (d Document) Err() error { return d.err }
  
@@ -146,14 +151,17 @@ const (
 
 // Node describes a node in the hierarchical structure of a JSON document.
 // It can be any valid JSON value or construct.
+//
+// Note: duplicate keys in objects are not allowed.
 type Node struct {
   kind NodeKind
   value Value // ValueKind for objects and arrays is NullValue
   children []Node // objects and array have children, nil for scalar nodes
-  context Context // the error context (maybe use pointer here?) 
-  keysIndex map[string]int // lookup index for objects, so Key() finds a key in constant time
+  ctx Context // the error context (maybe use pointer here?) 
+  keysIndex map[string]int // lookup index for objects, so Key() finds a key in constant time. Refers to the index of the Node in children.
 }
 
+func (n node) Context() Context { // node context }
 func (n Node) build(l interface.Lexer, opts documentOptions) []Node {
   // recursively build nodes
   // very much like easyjon unmarshaling operates
@@ -173,12 +181,12 @@ func (n Node) Value() (Value, bool) {} // always false if kind != NodeKindScalar
 type Value struct {
   kind ValueKind
 
-  // maybe we need only one type here which is ScalarValue?
+  // Maybe we need only one type here which is ScalarValue?
   // The problem with that design is that the value is no longer self-sufficient
   // and needs to know which relevant Store is being used...
   //
   // another problem here is that if we want values to remain lazy for as long as possible, we
-  // should keep compressed strings compressed until actually consumed
+  // should keep compressed strings compressed until consumed
   // ScalarValue
   s StringValue
   n NumberValue  // TODO: add IntegerValue 
@@ -188,8 +196,9 @@ type Value struct {
 // alternate design: 100% lazy, but requires a pointer to be embedded. Overall I believe this is an acceptable trade-off
 type ScalarValue struct {
   store *stores.Store
-  scalar Reference
+  scalar stores.Reference // TODO: call this a stores.Handler
 }
+// ScalarValue methods: on-the-fly resolve of values, i.e. call the corresponding methods from Reference + beef-up processing for numerical types
 
 func (v BoolValue) Bool() (bool,bool) {}
 func (v StringValue) String() (string,bool) {}
@@ -211,12 +220,14 @@ func (v NumberValue) BigInt() (big.Int,bool) {}  // should be preferred whenever
 func (v NumberValue) BigRat() big.Rat {} // should be preferred whenever: !IsInteger() && !isFloat64()
 func (v NumberValue) Preferred() any {} // render the preferred go value to represent a number, either int64, uint64, float64, bit.Int or big.Rat
 
+/*
 type StringValue []byte
 type NumberValue []byte
 type BoolValue bool
-
+*/
 
 ```
+### Builder
 
 Builder is the way to construct `Document`s programmatically or modify existing documents into new instances (a document is immutable).
 
@@ -226,12 +237,31 @@ type Builder struct {
 }
 
 func (b Builder) WithObject() Builder {}
-func (b Builder) AddElement() Builder {}
-func (b Builder) AddKey(string, Node) Builder {}
+func (b Builder) AddElemWithNode(Node) Builder {}
+func (b Builder) AddElemWithDocument(Document) Builder {}
+func (b Builder) AddKeyWithNode(string, Node) Builder {}
+func (b Builder) AddKeyWithDocument(string, Document) Builder {}
 func (b Builder) Document() (Document, error) {}
 ...
 ```
 
+Example:
+```go
+var doc,subDoc Document
+_ := stdjson.Unmarshal([]byte(`{}`), &doc)
+_ := stdjson.Unmarshal([]byte(`{"a":1}`), &subDoc)
+
+newDoc := doc.Builder().
+  AddKeyWithDocument("model", subDoc).
+  Document()
+
+if !newDoc.Ok() {
+  ...
+}
+
+log.Println(newDoc.String())
+{"a":{1}}
+```
 ## Hooks
 
 The construction of a JSON document may be customized with hooks (i.e. callbacks).
@@ -244,10 +274,28 @@ Package `hooks`:
 // Hook to customize the behavior of a JSON document
 type Hook func(*documentHooks)
 
-type HookFunc func(*Node) error // TODO: should add more context so the callback knows better about what's going on.
+type HookFunc func(*HookContext) error // TODO: should add more context so the callback knows better about what's going on.
 
 type documentHooks struct {
-  beforeObject, afterObject, beforeArray, afterArray, beforeScalar, afterScalar, beforeKey, afterKey HookFunc
+  decodeHooks
+  encodeHooks
+}
+
+// HookContext provides callbacks with more context, possibly customized
+type HookContext struct {
+  Node Node // current Node
+  Key []byte // current key
+  Index int // current iteration (element, key)
+  Context Context // current parsing context
+  Custom any
+}
+
+type decodeHooks struct {
+  start, beforeObject, afterObject, beforeArray, afterArray, beforeScalar, afterScalar, beforeKey, afterKey, finalize HookFunc
+}
+
+type encodeHooks struct {
+  start, beforeObject, afterObject, beforeArray, afterArray, beforeScalar, afterScalar, beforeKey, afterKey, finalize HookFunc
 }
 ```
 
