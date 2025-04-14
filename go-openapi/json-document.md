@@ -31,7 +31,7 @@ We keep the current concept that any YAML should be translated to JSON before be
 
 What about "verbatim" then? YAML is just too complex for me to drift into such details right now.
 
-### Possible extensions
+### Other possible extensions
 
     the basic requirement on a JSON document is to support MarshalJSON and UnmarshalJSON, provide a builder side-type to support mutation
     more advanced use-case may be supported by additional (possibly composed) types
@@ -227,7 +227,29 @@ type BoolValue bool
 */
 
 ```
-### Builder
+## Typed documents
+
+The `json` package may expose a number of restricted types of documents. At the moment, there is:
+
+```go
+// Object is a JSON document of type object
+type Object struct {
+  Document
+}
+
+func (o Object) xx // TODO: how to restrict that this unmarshals only objects?
+// add Hooks?
+
+// Array is a JSON document of type array
+type Array struct {
+  Document
+}
+
+func (o Object) xx // TODO: how to restrict that this unmarshals only objects?
+// add Hooks?
+```
+
+## Builder
 
 Builder is the way to construct `Document`s programmatically or modify existing documents into new instances (a document is immutable).
 
