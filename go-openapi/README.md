@@ -1036,7 +1036,7 @@ func (b *Builder) WithAllOf(...Schema) Builder {}
 func (b *Builder) Schema() (Schema, error) {}
 ```
 
-Hooks are mechanism to customize a schema. This is used for example to derive the OpenAPI definition of a schema from the standard JSON schema.
+Hooks are a mechanism to customize how a schema is built. This is used for example to derive the OpenAPI definition of a schema from the standard JSON schema.
 
 ```go
 type Hook func(*schemaHooks)
@@ -1044,11 +1044,85 @@ type Hook func(*schemaHooks)
 type schemaHookFunc func(s *Schema) error
 type schemaHooks struct {
   beforeKey,afterKey,beforeElem,afterElem,beforeValidate,afterValidate  schemaHookFunc
+  setErr func(s *Schema, error) // allows to hook an error on the parent schema 
 }
-
-
 ```
 
+Schema analyzers:
+* analyzer for serialization & code gen
+  * analyze namespaces : signals potential naming conflicts
+  * analyze allOf patterns: serialization vs validation only
+  * allOf/anyOf/oneOf: inspect overlapping members
+  * allOf/anyOf/oneOf: inspect primitive only vs 
+  * analyze $ref with additional keys (supported in recent JSON schema drafts)
+  * detect cyclical $ref
+  * is null valid?
+  * has default value?
+  * is default value valid?
+  * named vs anonymous schema?
+  * is schema used ?
+  * golang-specific analyzer
+    * inspect naming issues (e.g. ToGoName / ToVarName would drastically change the original naming, or might hurt linter - e.g. non-ascii-)
+    * inspect enums: primitive vs complex types
+    
+* analyzer for validation
+  * array defines tuple?
+  * enum values valid (prune) ?
+  * validation result is always false?
+  * validation spec is useless (e.g. doesn't apply to appropriate type)
+  * golang specific:
+    * is zero-value valid?
+    * has additionalProperties?
+    * has additionalItems?
+   
+  * derive canonical representation: a unique semantic representation of a JSON schema (the order of keys notwithstanding)
+#### Swagger spec schema
+
+```go
+type Schema struct {
+  json.Schema // with hooks to restrict and extend JSON schema
+}
+
+type SimpleSchema struct {
+  json.Schema  // more hooks to restrict 
+}
+
+type pathItem struct {
+  method http.Method
+  path []string
+  securityDefinition ...
+  tags []string
+  operation *Operation
+}
+
+type Spec struct {
+  json.Document
+
+  Metadata
+
+  parameters []SimpleSchema
+  responses []Schema
+
+  operations []Operation
+  pathItems []pathItem
+  definitions []Schema
+}
+
+// Builder may construct an OpenAPI specification programmatically.
+type Builder struct {
+  Spec
+}
+
+func (b Builder) Spec() (Spec,error) {}
+```
+
+Spec analyzer:
+* find factorizations (e.g. parameters validations vs schema validations)
+* find factorizations (e.g. common parameters, common responses)
+
+Spec linter:
+* based on linting rules
+ 
 ### Model generation
 
 Ideas:
