@@ -22,6 +22,7 @@ This is similar in design to `easyjson/jlexer/Lexer`, but with a super reduced A
 * Alternate implementations: `github.com/go-openapi/core/json/lexers/ld-lexer`
 * Contributed implementations: `github.com/go-openapi/core/json/lexers/contrib` [go.mod] - Contributed alternative parser implementations
 * Examples: `github.com/go-openapi/core/json/lexers/examples` [go.mod]
+* Poolable: Yes
 
 ## Interfaces
 
@@ -39,16 +40,27 @@ type WithErrState interface {
   Err() error
 }
 
+// TODO: move to package pools at a high level (swag?)
+
 // Pool wraps a [sync.Pool]
-type Pool[T any] interface {
+type Pool[T any] struct {
+  sync.Pool
+
   Borrow() *T
   Redeem(*T)
+}
+
+func (p *Pool[T any]) Borrow() *T {...}
+func (p *Pool[T any]) Redeem(*T) {...}
+
+func NewPool[T any]() Pool[T] {
+  ...
 }
 
 // PoolSlice knows how to pool slices based on their underlying array.
 //
 // Note: redeeming a slice invalidates all potential slices based on the same underlying array.
-type Poolslice[T any] interface {
+type Poolslice[T any] struct {
   Borrow() []T
   Redeem([]T)
 }
@@ -116,7 +128,7 @@ func WithStrictNumbers(enabled bool) Option {}
 
 // WithMaxContainersStack enables a limit to be checked on the maximum nesting of containers.
 //
-// This is intented as a security guard against possible DOS attacks with streams such as "{{{{{.." or "[[[[...".
+// This is intended as a security guard against possible DOS attacks with streams such as "{{{{{.." or "[[[[...".
 //
 // This option is disabled by default when lexing from a buffer,
 // and set to 1024 when lexing from a stream of bytes.
@@ -137,6 +149,15 @@ func New(buf []byte, opt ...Option) *L { ...}
 //
 // Notice that the passed [io.Reader] is wrapped in an internal buffered reader.
 func NewFromReader(r io.Reader, opt ...Option) *L { ...}
+```
+
+Pooling
+
+```go
+var pool pools.Pool[L] = pools.NewPool[L]
+
+func BorrowLexer() *L { return pool.Borrow() }
+func RedeemLexer(l *L) { pool.Redeem(l) }
 ```
 
 ## TODO
