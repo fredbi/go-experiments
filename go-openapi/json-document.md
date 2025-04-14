@@ -49,6 +49,10 @@ A `Document` holds a root `Node` and knows which `Store` backs its values.
 
 We need a `Context` to (optionally) keep the full parsing context and point accurately to errors or warnings.
 
+The `Document` acts lazily: strings and number remain [stores.Reference]` or `[]byte` until explicitly used.
+
+> TODO: rename stores.Reference to stores.Handle as it may sow confusion with JSON References.
+
 JSON document node
 
 ```go
@@ -56,7 +60,17 @@ type Document struct {
   store interfaces.Store
   root  Node
   err   error
+  documentOptions
 }
+
+type documentOptions struct {
+  captureContext bool
+  lexerFactory func() lexers.Lexer
+  writerFactory func() writers.Writer
+}
+
+// Option to tune a JSON document to your liking
+type Option func(*documentOptions)
 ```
 
 ```go
@@ -67,7 +81,14 @@ func makeDocument(store Store, node Node) Document
 func (d *Document) Kind() types.NodeKind { return d.root.Kind() }
 
 func (d *Document) MarshalJSON() ([]byte, error) {}
-func (d *Document) UnmarshalJSON([]byte) error {}
+func (d *Document) UnmarshalJSON([]byte) error {
+  // create lexer from pool
+  lex := d.lexerFactory()
+  // consume tokens and build nodes in the document
+  var root Node
+  children := root.build(lex)
+}
+
 func (d *Document) Decode(r io.Reader) error {}
 func (d *Document) Encode(w io.Writer) error {}
 
@@ -87,13 +108,22 @@ func (d *Document) Reset() {}
 func (d Document) Ok() bool { return d.err == nil }
 func (d Document) Err() error { return d.err }
  
-// Pointer implements a JSON pointer
+// Pointer implements a JSON pointer.
+//
+// As specified by :
+// * https://www.rfc-editor.org/rfc/rfc6901
+// * https://datatracker.ietf.org/doc/html/draft-ietf-appsawg-json-pointer-07
 type Pointer struct {
   path []string // TODO: interned?
   Resettable
 }
 
-func (p Pointer) Path() string { return strings.Join(p.path,"/") }
+// String representation of a JSON pointer.
+func (p Pointer) String() string {
+  // TODO: escape stuff
+  // see github.com/go-openapi/jsonpointer, but we don't have to deal with all the reflect stuff
+  return strings.Join(p.path,"/")
+}
 
 // NodeKind describes the kind of node in a JSON document
 type NodeKind uint8
@@ -104,7 +134,7 @@ const (
   NodeKindArray
 )
 
-// ValueKind describe the kind of JSON value held by a node of kind NodeKindScalar
+// ValueKind describes the kind of JSON value held by a node of kind NodeKindScalar
 type ValueKind uint8
 const (
   ValueKindNull ValueKind = iota
@@ -124,6 +154,15 @@ type Node struct {
   keysIndex map[string]int // lookup index for objects, so Key() finds a key in constant time
 }
 
+func (n Node) build(l interface.Lexer, opts documentOptions) []Node {
+  // recursively build nodes
+  // very much like easyjon unmarshaling operates
+
+  // errors are trapped in the context
+
+  // Q: do we want to trap only lexing errors in the context? what about higher level errors?
+  // A: nah. We need to capture the context systematically, but only when told to do so.
+}
 
 func (n Node) Key(k string) (Document, bool) // always false if kind != NodeKindObject
 func (n Node) Elem(i int) (Document, bool) // always false if kind != NodeKindArray
@@ -134,27 +173,49 @@ func (n Node) Value() (Value, bool) {} // always false if kind != NodeKindScalar
 type Value struct {
   kind ValueKind
 
+  // maybe we need only one type here which is ScalarValue?
+  // The problem with that design is that the value is no longer self-sufficient
+  // and needs to know which relevant Store is being used...
+  //
+  // another problem here is that if we want values to remain lazy for as long as possible, we
+  // should keep compressed strings compressed until actually consumed
   // ScalarValue
   s StringValue
   n NumberValue  // TODO: add IntegerValue 
   b BoolValue
 }
 
+// alternate design: 100% lazy, but requires a pointer to be embedded. Overall I believe this is an acceptable trade-off
+type ScalarValue struct {
+  store *stores.Store
+  scalar Reference
+}
+
 func (v BoolValue) Bool() (bool,bool) {}
 func (v StringValue) String() (string,bool) {}
 
 func (v NumberValue) Number() (string,bool) {}
+
+// checks if supported by native types (limited to 64 bits, let the caller determined if small receivers are needed)
 func (v NumberValue) IsInteger() bool {}
 func (v NumberValue) IsNegative() bool {}
-func (v NumberValue) Int64() (int64,bool) {}
-func (v NumberValue) Uint64() (uint64,bool) {}
-func (v NumberValue) Float64() (float64,bool) {}
-func (v NumberValue) BigInt() (big.Int,bool) {}
-func (v NumberValue) BigRat() big.Rat {} 
+func (v NumberValue) IsInt64() bool {}
+func (v NumberValue) IsUint64() bool {}
+func (v NumberValue) IsFloat64() bool {}
+
+// conversions
+func (v NumberValue) Int64() (int64,bool) {} // should be preferred when supported
+func (v NumberValue) Uint64() (uint64,bool) {} // should be preferred when IsInteger() && !IsNegative() and !IsInt64()
+func (v NumberValue) Float64() (float64,bool) {} // should be preferred when !IsInteger() && IsFloat64()
+func (v NumberValue) BigInt() (big.Int,bool) {}  // should be preferred whenever IsInteger() && !IsInt64() && !IsUint64()
+func (v NumberValue) BigRat() big.Rat {} // should be preferred whenever: !IsInteger() && !isFloat64()
+func (v NumberValue) Preferred() any {} // render the preferred go value to represent a number, either int64, uint64, float64, bit.Int or big.Rat
 
 type StringValue []byte
 type NumberValue []byte
 type BoolValue bool
+
+
 ```
 
 Builder is the way to construct `Document`s programmatically or modify existing documents into new instances (a document is immutable).
@@ -169,6 +230,25 @@ func (b Builder) AddElement() Builder {}
 func (b Builder) AddKey(string, Node) Builder {}
 func (b Builder) Document() (Document, error) {}
 ...
+```
+
+## Hooks
+
+The construction of a JSON document may be customized with hooks (i.e. callbacks).
+
+This allows to reuse much of the document building and rendering. The objective is to extend this infrastructure to more specialized document types, e.g. JSON schemas.
+
+Package `hooks`:
+
+```go
+// Hook to customize the behavior of a JSON document
+type Hook func(*documentHooks)
+
+type HookFunc func(*Node) error // TODO: should add more context so the callback knows better about what's going on.
+
+type documentHooks struct {
+  beforeObject, afterObject, beforeArray, afterArray, beforeScalar, afterScalar, beforeKey, afterKey HookFunc
+}
 ```
 
 ## TODO
