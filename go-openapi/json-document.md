@@ -39,7 +39,8 @@ More advanced use cases may be supported by additional (possibly composed) types
     
 Examples:
 * JSON document with JSONPath query support - I am not sure about why I would need that to process OpenAPI specs, but it might come in handy at some point.
-> here is a possible source of inspiration or reuse: https://pkg.go.dev/k8s.io/client-go/util/jsonpath
+> here is a possible source of inspiration or reuse: https://pkg.go.dev/github.com/PaesslerAG/jsonpath (ref: http://goessner.net/articles/JsonPath/)
+> Also see: https://pkg.go.dev/k8s.io/client-go/util/jsonpath
 
 * JSON document with other Marshal or Unmarshal targets, such as MarshalBSON (to store in MongoDB), MarshalJSONB (to store directly into postgres), ...
 
