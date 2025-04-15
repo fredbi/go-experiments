@@ -2,21 +2,30 @@
 
 ## 8 proposals
 
-1. Acknowledge the fact that json schema is perhaps not the best choice to accurately specify a serialization format.
+1. Acknowledge the fact that JSON schema is perhaps not the best choice to accurately specify a serialization format.
    > JSON schema was designed as a way to express validation constraints, not to specify explicitly a data format.
    > 
-   > The json schema approach is to derive a data format _implicitly_ from the series of validation constraints that are applied.
+   > The approach folowed by JSON schema is to derive a data format _implicitly_ from a series of validation constraints that are applied.
    > 
-   > In practice, constraints are most of the time strong enough to imply a given data type such as a `struct` type. But not always.
+   > In practice, constraints are most of the time strong enough to imply a given data type such as a `struct` type.
+   > And this is why it is possible to generate code for our APIs. Most of the time. But not always.
+   >
+   > The more I think about this design choice by Swagger authors, the more I think it is unappropriate.
    > 
-   > Think about how you would convert a json schema into a proto buf spec for example. It is harder than it seems.
+   > All the more as JSON schema has evolved a lot, toward a meta-vocabulary to describe many things,
+   > but not how to serialize DATA TYPES. And this is by design, so there is no point in complaining about it...
+   > 
+   > Think about how you would convert a JSON schema into a `protobuf` spec for example. It is harder than it seems.
+   >
    > In practice, this means that we should allow much more "intent metadata/desired target" input to flow from the developer,
    > which are not part of the spec.
    > 
    > This could be configured as rules or as ad-hoc `x-go-*` extensions.
    
-2. Abandon the "dynamic JSON" go way of doing things: work with opaque JSON documents that you can navigate (similar to what `gopkg.in/yaml.v3` does)
-   * Stop exposing data objects with exported fields. This has proved to be difficult (or impossible) to maintain over the long run
+2. Abandon the "dynamic JSON" go way of doing things
+   > Work with opaque JSON documents that you can navigate (similar to what `gopkg.in/yaml.v3` does).
+   * Stop exposing data objects with exported fields.
+   > This has proved to be difficult (or impossible) to maintain over the long run. Example: `spec.Spec`
    * Stop using go maps to represent objects.
    > The unordered, non-deterministic property of go maps makes them inappropriate for code, spec, or doc generation
    
@@ -65,9 +74,11 @@
     * analysis with the intent to produce code (requires a much deeper understanding to capture the intent of the schema)
       * at this stage, we may introduce a target-specific analysis. For example, it may be a good idea to know if the "zero value" (a very go-ish idea) is valid to take the right decision.
       * it becomes also interesting to infer the _intent_ that comes with some spec patterns
-8. Codegen should be very explicit about what pertains to the analysis of the source spec (e.g. "this is a polymorphic type", and what pertains to the solution in the target language
-    (e.g. "this is an interface type"). This would make it easier to support alternative solutions to represent the same specification (in this example, the developer might find generated
-    interface types awkward to use and would prefer a composition of concrete types)
+8. Codegen should be very explicit about separating concerns
+   > More specifically, be explicit about what pertains to the analysis of the source spec (e.g. "this is a polymorphic type"),
+   > and what pertains to the solution in the target language (e.g. "this is an interface type", "this is a pointer").
+   > This would make it easier to support alternative solutions that represent the same specification
+   > (in this example, the developer might find our generated interface types awkward to use and might prefer a composition of concrete types)
 
 ## [A mono-repo layout](./mono-repo.md)
 
@@ -75,14 +86,27 @@
 
 The main design goal are:
 
+* to build immutable data structure that clone efficiently
 * to be able to unmarshal and marshal JSON verbatim
 * to support JSON even where native types don't, e.g. non-UTF-8 strings, numbers that overflow float64, null value
 * to be able (on option) to keep an accurate track of the context of an error
 * to drastically reduce the memory needed to process large JSON documents (i.e. ~< 4 GB)
 * to limit garbage collection to a minimum viable level.
+* to access a document with JSON pointers
+
+Core components to be brought to the table:
+
+* JSON lexer / JSON writer
+* JSON Document, backed by a JSON store
+* JSON Schema extends the JSON Document and so does the OpenAPI spec.
+
+Since these structures do not use golang native types (everything remains pretty much raw `[]byte` under the hood),
+and only resolve lazily into go types, we can reason with complete JSON semantics without paying much attention
+to null vakues, zero values, pointers and the like.
+
+In this implementation, pointers are never used to store values internally.
 
 ### [JSON lexer / parser](./json-lexer.md)
-
 
 ### [JSON document and node](./json-document.md)
 
@@ -92,9 +116,10 @@ A document can be walked over and navigated through:
 * json pointers can be resolved (json schema `$ref` semantics are not known at this level) efficiently (e.g. constant time or o(log n))
 * desirable but not required: should lookup a key efficiently (e.g. constant time or o(log n))
 
-> NOTE: this supersedes features previously provided by `jsonpointer`, `swag`
+> NOTE: this supersedes the features previously provided by `jsonpointer`, `swag`
 
 Options:
+
 * a document may keep the parsing context of its nodes, to report higher-level errors
 * a document may support various tuning options regarding how best to store things (e.g. reduce numbers as soon as possible, compress large strings, etc)
 * ...
@@ -103,9 +128,12 @@ Options:
 
 We keep the current concept that any YAML should be translated to JSON before being processed.
 
-What about "verbatim" then? YAML is just too complex for me to drift into such details right now.
+What about "verbatim" then? Well, we just have to punt it: the promise is JSON-verbatim and yes, reconstructed YAML
+would lose some of its initial structure (like doc refs, tags, etc).
 
-Possible extensions:
+YAML is just too complex to promise anything like that anytime soon.
+
+#### Possible extensions
 
 * the basic requirement on a JSON document is to support MarshalJSON and UnmarshalJSON, provide a builder side-type to support mutation
 * more advanced use-case may be supported by additional (possibly composed) types
@@ -113,7 +141,7 @@ Possible extensions:
   * JSON document with JSONPath query support
   * JSON document with other Marshal or Unmarshal targets, such as MarshalBSON (to store in MongoDB), MarshalJSONB (to store directly into postgres), ...
 
-To avoid undue propagation of dependencies to external stuff like DB drivers etc, these should come as an independant module.
+To avoid undue propagation of dependencies to external stuff like DB drivers etc, they should come as independant modules.
 
 There is a contrib module to absorb novel ideas and experimentations without breaking anything.
 
@@ -123,7 +151,8 @@ A document store organizes a few blocks of memory to store (i) interned strings 
 
 #### [JSON schema](./json-schema.md)
 
-The JSON schema type extends the JSON document. This type supports all published JSON schema versions (from draft 4 to draft 2020).
+The JSON schema type extends the JSON document.
+This type supports all published JSON schema versions (from draft 4 to draft 2020).
 
 Hooks are a mechanism to customize how a schema is built. This is used for example to derive the OpenAPI definition of a schema from the standard JSON schema.
 
@@ -137,7 +166,8 @@ type schemaHooks struct {
 }
 ```
 
-Schema analyzers:
+#### Schema analyzers
+
 * analyzer for serialization & code gen
   * analyze namespaces : signals potential naming conflicts
   * analyze allOf patterns: serialization vs validation only
