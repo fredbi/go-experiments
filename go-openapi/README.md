@@ -698,185 +698,10 @@ The main design goal are:
 * to drastically reduce the memory needed to process large JSON documents (i.e. ~< 4 GB)
 * to limit garbage collection to a minimum viable level.
 
-#### JSON lexer / parser
-
-* fast, zero-allocation, zero-garbage, limited configurable buffering - but not zero-copy
-* produce accurate tokens with verbatim reproducibility in mind (see also a similar project at golang.org/exp)
-* maintain the context of syntax errors, and the current parsing context to report higher level errors
-* can be used for other things than building documents: parsing or filtering streams, linting json
-* ensure strictness about JSON (parsing numbers, escaping unicode, etc), but may optionally be more lax
-* the primary use case (that defines the optimized path) is buffered JSON, with no assumption about the lifecycle of the buffer (hence copy is needed).
-
-This is similar in design to easyjson jlexer, but with a super reduced API instead: all the information is in the delivered token,
-so you only need to consume tokens to figure out what to do.
-
-Numbers remain strings. Tokens may be converted to numerical types if needed, this is the token consumer's call.
-
-Similarly, a json writer (again along the same lines as easyjson jwriter) is produced to marshal a stream of tokens into a stream of bytes.
-
-Possible extensions:
-
-* the lexer / parser expose a small interface so many different implementations may coexist
-* examples: lexer for JSON line-delimited (jsonl), text-delimited JSON, or other stream-oriented formatting of JSON
-* there is a contrib sub-modules to more easily introduce novel or experimental features without breaking anything else
-
-Location: `github.com/go-openapi/core/json/lexers/default-lexer`
-```go
-var _ &L{} types.Lexer
-
-type L struct {
-  _ struct{}
-}
-
-type Option func(*options)
-
-func New(buf []byte, opt ...Option) *Lexer { ...}
-func NewFromReader(r io.Reader, opt ...Option) *Lexer { ...}
-```
- 
-Interface (from `github.com/go-openapi/core/json/types`):
-```go
-type Resettable interface{
-  // Reset resets the object to its default or zero value.
-  // This is useful for objects made available from a [sync.Pool].
-  Reset()
-}
-
-// WithErrState is the common interface for all types
-// which manage an internal error state.
-type WithErrState interface {
-  Ok() bool
-  Err() error
-}
-```
-
-```go
-type Lexer interface{
-  NextToken() Token
-  Resettable
-  WithErrState
-}
-```
-
-#### JSON document node
+#### [JSON lexer / parser](./json-lexer.md)
 
 
-```go
-type Document struct {
-  store types.Store
-  root  types.Node
-  err   error
-}
-
-type Context struct {...} // text-context to report errors etc
-
-func makeDocument(store Store, node Node) Document
-
-func (d *Document) Kind() types.NodeKind { return d.root.Kind() }
-
-func (d *Document) MarshalJSON() ([]byte, error) {}
-func (d *Document) UnmarshalJSON([]byte) error {}
-func (d *Document) Decode(r io.Reader) error {}
-func (d *Document) Encode(w io.Writer) error {}
-
-func (d *Document) Key(k string) (Document, bool)
-func (d *Document) Elem(i int) (Document, bool)
-func (d *Document) KeysIterator() iter.Seq2[string,Document]
-func (d *Document) ElemsIterator() iter.Seq[Document]
-
-// Get a JSON [Pointer] inside this [Document]
-func (d Document) Get(p Pointer) (Document, bool)
-
-func (d *Document) Reset() {}
-func (d Document) Ok() bool { return d.err == nil }
-func (d Document) Err() error { return d.err }
- 
-// Pointer implements a JSON pointer
-type Pointer struct {
-  path []string // TODO: interned?
-  Resettable
-}
-
-func (p Pointer) Path() string { return strings.Join(p.path,"/") }
-
-type NodeKind uint8
-const (
-  NodeKindNull NodeKind = iota
-  NodeKindScalar
-  NodeKindObject
-  NodeKindArray
-)
-
-type ValueKind uint8
-const (
-  ValueKindNull ValueKind = iota
-  ValueKindString
-  ValueKindNumber
-  ValueKindInteger
-  ValueKindBool
-}
-
-type Node struct {
-  kind NodeKind
-  value Value // ValueKind for objects and arrays is NullValue
-  children []Node // objects and array have children, nil for scalar nodes
-  context Context
-  keysIndex map[string]int // lookup index for objects
-}
-
-
-func (n Node) Key(k string) (Document, bool) // always false if kind != NodeKindObject
-func (n Node) Elem(i int) (Document, bool) // always false if kind != NodeKindArray
-func (n Node) KeysIterator() iter.Seq2[string,Document] // nil if kind != NodeKindObject
-func (n Node) ElemsIterator() iter.Seq[Document] // nil if kind != NodeKindArray
-func (n Node) Value() (Value, bool) {} // always false if kind != NodeKindScalar
-
-type Value struct {
-  kind ValueKind
-
-  // ScalarValue
-  s StringValue
-  n NumberValue  // TODO: add IntegerValue 
-  b BoolValue
-}
-
-func (v BoolValue) Bool() (bool,bool) {}
-func (v StringValue) String() (string,bool) {}
-
-func (v NumberValue) Number() (string,bool) {}
-func (v NumberValue) IsInteger() bool {}
-func (v NumberValue) IsNegative() bool {}
-func (v NumberValue) Int64() (int64,bool) {}
-func (v NumberValue) Uint64() (uint64,bool) {}
-func (v NumberValue) Float64() (float64,bool) {}
-func (v NumberValue) BigInt() (big.Int,bool) {}
-func (v NumberValue) BigRat() big.Rat {} 
-
-type StringValue []byte
-type NumberValue []byte
-type BoolValue bool
-
-type Builder struct {
-  Document
-}
-
-func (b Builder) WithObject() Builder {}
-func (b Builder) AddElement() Builder {}
-func (b Builder) AddKey(string, Node) Builder {}
-func (b Builder) Document() (Document, error) {}
-...
-```
-A hierarchy of nodes that represent JSON elements organized into arrays and objects in a memory-efficient way.
-
-All these are represented by go slices, not maps: ordering is maintained, and shallow cloning of slice value doesn't require allocating new memory.
-
-All scalar content is stored in the document store (see below). Memory storage is shared among documents with similar content.
-In particular, by default, the document will intern strings for keys.
-
-A document is immutable. Since cloning a document is essentially a copy-on-write operation, it is mandatory to mutate stuff with clones.
-A document comes with a "builder" interface to mutate stuff and return a clone, e.g. add/remove things.
-
-A document knows how to decode/encode and unmarshal/marshal JSON (essentially the same API as encoding/json).
+#### [JSON document and node](./json-document.md)
 
 A document can be walked over and navigated through:
 
@@ -909,184 +734,13 @@ To avoid undue propagation of dependencies to external stuff like DB drivers etc
 
 There is a contrib module to absorb novel ideas and experimentations without breaking anything.
 
-#### JSON document store
+#### [JSON document store](./json-store.md)
 
 A document store organizes a few blocks of memory to store (i) interned strings and (ii) JSON scalar values packed in memory.
 
-It serves as a cache when loading several JSON documents.
-It serves internal "slots" as `Reference`s to a document to keep track of its values, in a more efficient way than a pointer.
-
-All the smart lies in how the reference (e.g. a uint32 or uint64) is used to locate a value of a given type in the memory block.
-The 
-A document store may be rather limited in size, e.g. 4 GB or so: we don't need an unlimited address space.
-
-> NOTE: this supersedes the document cache currently managed in `spec`
-
-Possible extensions:
-
-The interface of a document store is very simple. Essentially, this is a cache:
-```go
-type Store interface {
-  Put(value Value) Reference
-  Get(Reference) Value
-
-  Loader() func(string) ([]byte,error)
-
-  // TODO: keys interning
-
-  Resettable
-}
-```
-
-```go
-// uint64 version (TODO uint32 version).
-//
-// Reference packs a JSON value as a uint64 plus a reference to []byte located in the arena.
-//
-//  |0-3     | 4-15 | 16-23  | 24-63                       |
-//  | header | length        | offset: 0 - 2^40-1 = 1024 GB|
-//
-// Header
-// 0: null value
-// 1: false value
-// 2: true value
-// 3: small number (=<7 bytes): only strings longer than 7 require an arena slot
-// 4: small string (=<7 bytes): only numbers larger than 7 digits require an arena slot
-// 5: large number: offset points to arena slot for BCD-encoded []byte
-// 6: large string: offset points to arena slot for []byte (possibly compressed)
-//
-// length: single value up to 1GB
-// offset: 0-2^40 = 1024 GB
-//
-// Encoding
-// numbers: are encoded as BCD, cf. https://pkg.go.dev/github.com/yerden/go-util/bcd
-type Reference uint64
-
-func (r Reference) Value() types.Value {}
-func makeReference(v Value) Reference {}
-```
-
-```go
-type ReferenceConstraint interface {
-  ~uint32
-  ~uint64
-}
-
-type Store[T ReferenceConstraint] struct {
-  sync.RWLock
-  next uint64
-  arena []byte
-  // interned keys ??
-  // zlib dictionary
-  dict []byte
-}
-
-func New(opts ...Option) *Store { }
-
-type Option func(*options)
-
-// withCompress enables compression of strings longer than threshold, using a zlib compression level.
-//
-// By default, compression is disabled.
-//
-// Example:
-// WithCompress(1024, zlib.BestSpeed) will compress all strings of 1024 or more bytes to be compressed internally in the Store.
-// For best compression, the zlib dictionary is shared among all documents held by the Store.
-func WithCompress(threshold uint, level int) Option {}
-func WithPreallocatedArena(size uint64) Option {}
-
-// WithLoader specifies a document loader for the Store.
-//
-// The default is [loading.JSONDoc].
-func WithLoader(func(url string) ([]byte, error)
-
-```
-It is possible to implement (possibly experiment in the contrib module) stores with different properties.
-
-Examples:
-* using different internal packing methods. Some could be inspired by other systems (e.g. JSON packing in sqllite, jsonpack, bson or some
-other representation that may be more suitable to convert into a specific backend)
-* extending to storage-backed cache and relieving memory limitations
-* ...
-
-#### JSON schema
+#### [JSON schema](./json-schema.md)
 
 The JSON schema type extends the JSON document. This type supports all published JSON schema versions (from draft 4 to draft 2020).
-
-```go
-type Option func(*options)
-
-func WithStrictVersion(enabled bool) Option {}
-func WithRequiredVersion(JSONSchemaVersion) Option {}
-finc WithHooks(hooks ...Hook) Option {}
-```
-
-```go
-type NamedSchema {
-  Key string
-  Schema
-}
-
-type Schema struct {
-  json.Document
-
-  ref Reference // TODO???
-  types []json.NodeKind
-  properties []NamedSchema
-  allOf []Schema
-  anyOf []Schema
-  oneOf []Schema
-  not Schema
-
-  // schema metadata
-  Version  // version, minCompatibleVersion, maxCompatibleVersion
-  Metadata // ID, $id, description, $comment...
-
-  // validation clauses
-  StringValidations
-  NumberValidations
-  ArrayValidations
-  ObjectValidations
-}
-
-func (s *Schema) UnmarshalJSON([]byte) error {}
-func (s *Schema) Decode(io.Reader) error {}
-
-func (s *Schema) decode() error {
-// Lexer etc -> validate on the go the JSON schema structure
-...
-s.err = s.check()
-
-return s.err
-}
-
-func (s Schema) Properties() []Schema { return s.properties }
-...
-
-type StringValidations struct {
-  minLength json.IntegerValue
-  maxLength json.IntegerValue
-  ..
-}
-type Reference struct {
-  sync.RWLock
-
-  pointer json.Pointer
-
-  cached *Schema
-}
-
-func (r *Reference) Resolve(context.Context) (Schema, error) {}
-func (r *Reference) Expand(context.Context) (Schema, error) {}
-
-type Builder {
-  Schema
-}
-
-func (b *Builder) WithProperties(...NamedSchema) Builder {}
-func (b *Builder) WithAllOf(...Schema) Builder {}
-func (b *Builder) Schema() (Schema, error) {}
-```
 
 Hooks are a mechanism to customize how a schema is built. This is used for example to derive the OpenAPI definition of a schema from the standard JSON schema.
 
@@ -1117,7 +771,7 @@ Schema analyzers:
     * inspect naming issues (e.g. ToGoName / ToVarName would drastically change the original naming, or might hurt linter - e.g. non-ascii-)
     * inspect enums: primitive vs complex types
     
-* analyzer for validation
+* |analyzer for validation](./json-validation-analyzer.md)
   * array defines tuple?
   * enum values valid (prune) ?
   * validation result is always false?
@@ -1128,6 +782,7 @@ Schema analyzers:
     * has additionalItems?
    
   * derive canonical representation: a unique semantic representation of a JSON schema (the order of keys notwithstanding)
+    
 #### Swagger spec schema
 
 ```go
