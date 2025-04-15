@@ -33,11 +33,15 @@ What about "verbatim" then? YAML is just too complex for me to drift into such d
 
 ### Other possible extensions
 
-    the basic requirement on a JSON document is to support MarshalJSON and UnmarshalJSON, provide a builder side-type to support mutation
-    more advanced use-case may be supported by additional (possibly composed) types
-    examples:
-        JSON document with JSONPath query support
-        JSON document with other Marshal or Unmarshal targets, such as MarshalBSON (to store in MongoDB), MarshalJSONB (to store directly into postgres), ...
+The basic requirement on a JSON document is to support MarshalJSON and UnmarshalJSON, JSON pointer and to provide a builder side-type to support mutation.
+    
+More advanced use cases may be supported by additional (possibly composed) types.
+    
+Examples:
+* JSON document with JSONPath query support - I am not sure about why I would need that to process OpenAPI specs, but it might come in handy at some point.
+> here is a possible source of inspiration or reuse: https://pkg.go.dev/k8s.io/client-go/util/jsonpath
+
+* JSON document with other Marshal or Unmarshal targets, such as MarshalBSON (to store in MongoDB), MarshalJSONB (to store directly into postgres), ...
 
 To avoid undue propagation of dependencies to external stuff like DB drivers etc, these should come as an independent module.
 
@@ -47,11 +51,11 @@ A `Document` holds a root `Node` and knows which `Store` backs its values.
 
 `Nodes` describe the hierarchy of the JSON document.
 
-We need a `Context` to (optionally) keep the full parsing context and point accurately to errors or warnings.
+Further, we need a `Context` to (optionally) keep the full parsing context and point accurately to errors or warnings.
 
-The `Document` acts lazily: strings and number remain [stores.Reference]` or `[]byte` until explicitly used.
+The `Document` acts lazily: strings and number remain [stores.Handle]`s or `[]byte` until explicitly used.
 
-> TODO: rename stores.Reference to stores.Handle as it may sow confusion with JSON References.
+The `Document` interns strings used as keys (perhaps provide this as an option that may be disabled).
 
 ```go
 // DocumentFactory receives the desired settings to produce [Document]s in an efficient way.
@@ -64,22 +68,6 @@ NewDocumentFactory(opts ...Option) *DocumentFactory {}
 // Document produces a Document with the factory settings
 func (f *DocumentFactory) Document() Document  { ... }
 
-// preset factories -> perhaps in a different package, e.g. "presets", or "documents"
-func ObjectDocument() Object
-func ArrayDocument() Array
-func PositiveIntegerDocument() // ??
-func PositiveNumberDocument() // ??
-func NonNegativeIntegerDocument() // ?? 
-```
-
-document factory -> document -> JSON document node
-
-```go
-type Document struct {
-  store interfaces.Store
-  root  Node
-  err   error // useful? or node err should be enough?
-}
 
 type documentOptions struct {
   decodeOptions
@@ -87,18 +75,18 @@ type documentOptions struct {
 }
 
 type decodeOptions struct {
-  captureContext bool
-  lexerFactory func() lexers.Lexer
-  lexerFromReaderFactory func(io.Reader) lexers.Lexer
+  lexerFactory func() (lexers.Lexer,func())
+  lexerFromReaderFactory func(io.Reader) (lexers.Lexer,func()) // no pool for now
   decodeHooks []hooks.Hook
+  captureContext bool
 }
 
 type encodeOptions struct {
-  indent bool
-  indentation string
-  writerFactory func() writers.Writer
-  writerFromWriterFactory func(io.Writer) writers.Writer
+  writerFactory func() (writers.Writer, func())
+  writerToWriterFactory func(io.Writer) (writers.Writer,func()) // no pool for now
   encodeHooks []hooks.Hook
+  indentation string
+  indent bool
 }
 
 // Option to tune a JSON document to your liking
@@ -107,19 +95,52 @@ type Option func(*documentOptions)
 func WithKeepContext(enabled bool) Option
 func WithLexerFactory(func() lexers.Lexer) Option
 func WithWriterFactory(func() writers.Writer) Option
+func WithLexerFromPool(interfaces.Pool[lexers.Lexer]) Option
+func WithWriterFromPool(interfaces.Pool[writers.Writer]) Option
 func WithDecodeHooks(callbacks ...hooks.Hook) Option
 func WithEncodeHooks(callbacks ...hools.Hook) Option
+
+func noRedeem() func() {}
 ```
 
 ```go
-type Context struct {...} // text-context to report errors etc
+// examples of preset factories -> perhaps in a different package, e.g. "presets", or "documents"
+func ObjectDocument() Object
+func ArrayDocument() Array
+func PositiveIntegerDocument() // ??
+func PositiveNumberDocument() // ??
+func NonNegativeIntegerDocument() // ?? 
+```
 
+The bottom line: DocumentFactory -> Document -> JSON document Node
+
+```go
+type Document struct {
+  store interfaces.Store
+  document
+  _ struct{}
+}
+
+// document is the internal representation, without the extra pointer to the store.
+type document {
+  err   error // useful? or node err should be enough?  
+  root  Node
+  documentOptions // should we use a pointer here instead?
+}
+```
+
+```go
+type Context struct { // text-context to report errors etc
+  // see lexer context
+}
+```
+
+```go
 func makeDocument(store Store, node Node) Document
 
 func (d *Document) Kind() types.NodeKind { return d.root.Kind() }
 
 func (d *Document) MarshalJSON() ([]byte, error) {
-  // create writer from pool: WithWriterFromPool( ...) instead of WithWriterFactory( ...)
   jw,redeem := d.writerFactory()
   defer redeem()
 
@@ -129,7 +150,6 @@ func (d *Document) MarshalJSON() ([]byte, error) {
 }
 
 func (d *Document) UnmarshalJSON([]byte) error {
-  // create lexer from pool: WithLexerFromPool(...)
   lex, redeem := d.lexerFactory()
   defer redeem()
 
@@ -142,13 +162,7 @@ func (d *Document) UnmarshalJSON([]byte) error {
   return lex.Error()
 }
 
-/*
-Possible alternative design:
-type Decoder struct {}
-type Encoder struct {}
-*/
-
-func (d *Documen) Decode(r io.Reader) error {
+func (d *Document) Decode(r io.Reader) error {
   lex := d.lexerFromReaderFactory(r)
   d.err = nil
   d.root.Reset()
@@ -159,27 +173,62 @@ func (d *Documen) Decode(r io.Reader) error {
 }
 
 func (d *Document) Encode(w io.Writer) error {
-  // create writer from pool: WithWriterFromWriterFromPool(...)
-  jw, redeem := d.writerFromWriterFactory(w)
+  jw, redeem := d.writerToWriterFactory(w)
   defer redeem()
 
   root.encode(jw,d.documentEncodeOptions)
 
-  return jw.Bytes(), jw.Error()
+  return jw.Error()
 }
-*/
+
 
 // Key returns the document located under key k, or false if this key is not present.
-func (d *Document) Key(k string) (Document, bool)
+func (d *Document) Key(k string) (Document, bool) {
+  return d.root.Key(k)
+}
+
 // Elem returns the i-th element in an array, or false if i is equal or larger than the size of the array.
-func (d *Document) Elem(i int) (Document, bool)
-// KeysIterator returns an iterator over keys and documents in an object document
-func (d *Document) KeysIterator() iter.Seq2[string,Document]
-// ElemsIterator returns an iterator over the elements of an array document
-func (d *Document) ElemsIterator() iter.Seq[Document]
+func (d *Document) Elem(i int) (Document, bool) {
+  return d.root.Elem(i)
+}
+
+// Pairs returns an iterator over keys and documents in an object document
+func (d *Document) Pairs() iter.Seq2[string,Document] {
+  nodePairs := d.root.Pairs()
+  if nodePairs == nil {
+    return nil
+  }
+
+  return func(yield func(string, Document) bool) {
+    for key, node := range nodePairs {
+      doc := makeDocument(d.store, node)
+      if !yield(key, doc) {
+		return
+	  }
+	}
+  }
+}
+
+// Elems returns an iterator over the elements of an array document
+func (d *Document) Elems() iter.Seq[Document] {
+  nodeElems := d.root.Elems()
+  if nodeElems == nil {
+    return nil
+  }
+
+  return func(yield func(Document) bool) {
+    for _, node := range nodeElems {
+      doc := makeDocument(d.store, node)
+      if !yield(doc) {
+        return
+      }
+    }
+  }
+}
 
 // Get a JSON [Pointer] inside this [Document], or false if the pointer cannot be resolved
-func (d Document) Get(p Pointer) (Document, bool)
+func (d Document) Get(p Pointer) (Document, bool) {
+}
 
 func (d *Document) Reset() {
   d.root.Reset()
@@ -236,16 +285,21 @@ const (
   ValueKindBool
 }
 
+// why do we need to export Node? Why not keeping it private?
+
 // Node describes a node in the hierarchical structure of a JSON document.
 // It can be any valid JSON value or construct.
 //
 // Note: duplicate keys in objects are not allowed.
+//
+// Perhaps we should make this generic and accept either unique.Handle[string] or string as param type.
 type Node struct {
   kind NodeKind
+  key unique.Handle[string]  // key for objects properties
   value Value // ValueKind for objects and arrays is NullValue
   children []Node // objects and array have children, nil for scalar nodes
   ctx Context // the error context (maybe use a pointer here?) 
-  keysIndex map[string]int // lookup index for objects, so Key() finds a key in constant time. Refers to the index of the Node in children.
+  keysIndex map[unique.Handle[string]]int // lookup index for objects, so Key() finds a key in constant time. Refers to the index of the Node in children.
 }
 
 func (n node) Context() Context { // node context }
@@ -294,16 +348,58 @@ func (n Node) Key(k string) (Document, bool) {  // always false if kind != NodeK
     return emptyDocument, false
   }
 
-  return n.children[n.keysIndex[k]]
+  return n.children[n.keysIndex[unique.Make(k)]]
 }
 
 func (n Node) Elem(i int) (Document, bool) { // always false if kind != NodeKindArray
-  ...
+  if n.kind != NodeKindArray {
+    return emptyDocument, false
+  }
+  if i >= len(n.children) || i < 0 {
+    return emptyDocument, false
+  }
+
+  return n.children[i]
 }
 
-func (n Node) KeysIterator() iter.Seq2[string,Document] // nil if kind != NodeKindObject
-func (n Node) ElemsIterator() iter.Seq[Document] // nil if kind != NodeKindArray
-func (n Node) Value() (Value, bool) {} // always false if kind != NodeKindScalar
+// Pairs return all (key,Node) pairs inside an object.
+func (n Node) Pairs() iter.Seq2[string,Node] // nil if kind != NodeKindObject
+  if n.kind != NodeKindObject {
+    return nil
+  }
+
+  return func(yield func(string, Node) bool) {
+    for _, pair := range n.children {
+      if !yield(pair.key, pair) {
+		return
+	  }
+	}
+  }
+}
+
+func (n Node) Elems() iter.Seq[Node] { // nil if kind != NodeKindArray
+  if n.kind != NodeKindArray {
+    return nil
+  }
+
+  return func(yield func(Node) bool) {
+    for _, node := range n.children {
+      if !yield(node) {
+        return
+      }
+    }
+  }
+}
+
+nullValue = Value{}
+
+func (n Node) Value() (Value, bool) {  // always false if kind != NodeKindScalar
+  if n.kind != NodeKindScalar {
+    return nullValue, false
+  }
+
+  return n.value
+}
 
 type Value struct {
   kind ValueKind
@@ -314,17 +410,19 @@ type Value struct {
   //
   // another problem here is that if we want values to remain lazy for as long as possible, we
   // should keep compressed strings compressed until consumed
-  // ScalarValue
-  s StringValue
-  n NumberValue  // TODO: add IntegerValue 
-  b BoolValue
+  ScalarValue
+  // s StringValue
+  // n NumberValue  // TODO: add IntegerValue 
+  // b BoolValue
 }
 
-// alternate design: 100% lazy, but requires a pointer to be embedded. Overall I believe this is an acceptable trade-off
+// alternate design: 100% lazy, but requires a pointer to be embedded.Could be an acceptable trade-off
 type ScalarValue struct {
-  store *stores.Store
-  scalar stores.Reference // TODO: call this a stores.Handler
+  store  stores.Store
+  scalar stores.Handle
 }
+
+/*
 // ScalarValue methods: on-the-fly resolve of values, i.e. call the corresponding methods from Reference + beef-up processing for numerical types
 
 func (v BoolValue) Bool() (bool,bool) {}
@@ -338,6 +436,7 @@ func (v NumberValue) IsNegative() bool {}
 func (v NumberValue) IsInt64() bool {}
 func (v NumberValue) IsUint64() bool {}
 func (v NumberValue) IsFloat64() bool {}
+*/
 
 // conversions
 func (v NumberValue) Int64() (int64,bool) {} // should be preferred when supported
