@@ -65,3 +65,25 @@ Start with some heavy refactoring to split a few things as their own modules lik
 * figure a way to inject the outcome of the content negotiation more workable by API handlers (it's really a pain to implement as for now)
 * find a way to split the security layer, so as to make it pluggable
 * modernize logging, with the possibility to inject external loggers (such as `zap`, `zerolog` etc)
+
+## Detailed design (draftish)
+
+* keep UntypedAPI
+* build UntypedClient
+* trim down client down to BindParams()
+* trim down server down to BindRequest()
+
+* server: auth, content nego, etc -> pluggable directly to the router (this is actually the case, clarify the interface)
+* client: TLS, tracing, etc -> pluggable directly to Transport (more or less like now, need to clarify the interface)
+
+* server: add more auth middleware
+* client: add credential providers
+
+* major change: pluggable router, possibly static (e.g.generated code)
+* major change:
+  
+  client: (http.Client build-up, TLS, tracing, etc) ->
+  client: (middleware stack incl. credentials provider / transport hooks/content nego) -> BindParams() -> Request -> <<< wire >> ->
+  server: <<< request >> -> Consume() -> (route) -> (middleware stack incl. auth, content nego) -> BindRequest() -> UnmarshalValidate() (body) -> HandlerFunc() Responder
+  server: Responder -> Produce()
+  
