@@ -26,6 +26,7 @@ func WithMetadataStripped(enabled bool) Option { ... }
 // Analyze the input JSON  schema.
 func (a *Analyzer) Analyze() error {
 }
+// TODO: partial analysis is interesting to share some of the processing with other analyzers
 
 // DocValidator returns a closure that can validate a JSON Document against the input schema.
 func (a *Analyzer) DocValidator() DocValidatorFunc { }
@@ -51,6 +52,8 @@ type Tree struct {
 // Walk an AST tree in a depth-first, left-to-right manner
 func (t Tree) Walk(apply func(*Node) error)
 
+// Schema returns the canonical JSON schema that results from the AST
+func (t Tree) Schema() jsonschema.Schema { ... }
 
 type Node struct {
   children []Node
@@ -67,11 +70,11 @@ type Kind uint32
 const (
   Empty Kind = iota
   TypeValidations
-  StringValidations // minLength, maxLength, pattern, format
-  NumberValidations // minimum, exclusiveMinimum, maximum, exclusiveMaximum, multipleOf, format
-  ObjectValidations // properties, additionalProperties, required, minProperties, maxProperties
-  ArrayValidations  // items (array case), maxItems, minItems
-  TupleValidations  // items (tuple case)
+  StringValidation // minLength, maxLength, pattern, format
+  NumberValidation // minimum, exclusiveMinimum, maximum, exclusiveMaximum, multipleOf, format
+  ObjectValidation // properties, additionalProperties, required, minProperties, maxProperties
+  ArrayValidation  // items (array case), maxItems, minItems
+  TupleValidation  // items (tuple case)
   Enum // applies to all types
   Null
   Const
@@ -87,6 +90,19 @@ const (
   Metadata // keep metadata such as description, title, $id, $comment, default, example, etc
   Annotation
   ... // dependency, if else, media, ...
+)
+
+
+type SubKind uint32
+
+const (
+  None SubKind = iota
+  StringValidationMinLength
+  StringValidationMaxLength
+  ...
+  NumberValidationMinimum
+  NumberValidationMaximum
+  ...
 )
 ```
 
@@ -113,7 +129,7 @@ Building the AST:
 Notice that we cannot reconstruct the original schema (not unaltered at least) back from the AST.
 
 * Stage 2:
-  * at this stage, we no longer have multiple types
+  * at this stage, we no longer have multiple types: prune inapplicable validations
  
 
 ## Validation expressions
@@ -138,7 +154,7 @@ func (e Expression) FilterForType(string) Expression {
 // Evaluate nodes in an expression recursively and replace always true or always false statements by nodes True or False.
 //
 // Examples:
-// (Minimum(4), Maximum(2) <=> False
+// (Minimum(4), Maximum(2) <=> Range(4,2) <=> False
 // (Enum([-1,1], Maximum(3)) => Enum([-1,1]) // TODO: Enum([a,b]) becomes OR(CONST(a),CONST(b))
 func (e Expression) Evaluate() (Expression,Node) {
   ...
