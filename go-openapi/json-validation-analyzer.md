@@ -1,13 +1,14 @@
 # JSON schema validation analyzer
 
-This analyzes a JSON schema document specifically with the intent to validate JSON data against this schema.
+This analyzes a JSON schema document to validate JSON data against this schema.
 
 ```
 type DocValidatorFunc func(d json.Document) error
 
-// Schema is an analyzed schema, with the intent to validating data
+// Schema is an analyzed schema, with the intent to validate data
 type Schema struct {
   schema jsonschema.Schema
+  root ast.Tree
 }
 
 type SchemaHash [32]byte
@@ -34,14 +35,134 @@ func (a *Analyzer) ValidationAST() ast.Tree { ... }
 
 // CanonicalSchema returns the canonicalized JSON schema with its unique 32-bits hash
 func (a *Analyzer) CanonicalSchema() (SchemaHash, jsonschema.Schema) {}
-// 
-// Package `expressions`
+```
+
+## Validation AST for a JSON schema
+
+We build an AST of the schema to reason about it without the constraints of its version or changes in semantics.
+
+Package `ast`:
+
+```go
+type Tree struct {
+  root Node
+}
+
+// Walk an AST tree in a depth-first, left-to-right manner
+func (t Tree) Walk(apply func(*Node) error)
+
+
+type Node struct {
+  children []Node
+  kind Kind
+  hash SchemaHash
+  path json.Pointer // holds the path of a schema
+  ...
+}
+
+func (n Node) Kind() NodeKind { ... }
+
+type Kind uint32
+
+const (
+  Empty Kind = iota
+  TypeValidations
+  StringValidations // minLength, maxLength, pattern, format
+  NumberValidations // minimum, exclusiveMinimum, maximum, exclusiveMaximum, multipleOf, format
+  ObjectValidations // properties, additionalProperties, required, minProperties, maxProperties
+  ArrayValidations  // items (array case), maxItems, minItems
+  TupleValidations  // items (tuple case)
+  Enum // applies to all types
+  Null
+  Const
+  Ref // children with resolved $ref
+  Compositions // allOf, anyOf, oneOf
+  // operators
+  True
+  False
+  And // And(children...)
+  Or // Or(children...)
+  Xor
+  Not
+  Metadata // keep metadata such as description, title, $id, $comment, default, example, etc
+  Annotation
+  ... // dependency, if else, media, ...
+)
+```
+
+Building the AST:
+
+* walk the schema and convert document nodes into AST node
+
+* the first pass is relatively straightforward:
+
+  * schemas are walked over depth-first, and the JSON path of each item is stored in an AST Node
+  * empty schema is True
+  * `type` array resolves as an OR group with one element in types and the rest of the schema cloned
+  * missing type resolves as "type": ["string","number","bool","array","object","null"]
+  * $ref are resolved under a Ref node
+  * cyclical $ref are kept (not obvious what to do)
+  * validations are arranged by their kind, e.g. TypeValidations, StringValidations, compositions etc.
+    Keys in a schema constitute an AND node
+  * allOf are expressed as an AND node
+  * anyOf => OR
+  * oneOf => XOR
+  * metadata is stripped into a Metadata node (just leave the portion of the original schema there)
+  * Other keys (unrecognized by the JSON schema grammar) are stripped into an Annotations node (just leave the portion of the original schema there)
+
+Notice that we cannot reconstruct the original schema (not unaltered at least) back from the AST.
+
+* Stage 2:
+  * at this stage, we no longer have multiple types
+ 
+
+## Validation expressions
+
+```go 
+package ast
 
 // Expression is a validation expression
 type Expression struct {
-  nodes []ExpressionNode
+  nodes []Node
 }
 
+// Filter out the expression of all validations that do not apply to a given type.
+//
+// If the type is null, all validations are stripped.
+//
+// Example [Maximum, MinLength].FilterForType("string") = MinLength
+func (e Expression) FilterForType(string) Expression {
+  ...
+}
+
+// Evaluate nodes in an expression recursively and replace always true or always false statements by nodes True or False.
+//
+// Examples:
+// (Minimum(4), Maximum(2) <=> False
+// (Enum([-1,1], Maximum(3)) => Enum([-1,1]) // TODO: Enum([a,b]) becomes OR(CONST(a),CONST(b))
+func (e Expression) Evaluate() (Expression,Node) {
+  ...
+}
+
+// Reduce the expression recursively by simplifying away redundant nodes and nodes that are true or false.
+//
+// It returns the reduced expression and a Node of kind Annotations or Empty annotated with remarks.
+//
+// Examples:
+//
+//   AND(x,True) = x, AND(x, False) = Falsen, OR(x,True) = x, XOR(x,True) = NOT(x), etc
+//   AND(x,x) = x, NOT(NOT(x)) = x ...
+func (e Expression) Reduce() (Expression,Node) {
+  ...
+}
+
+// Factorize the expression:
+//
+// e.g. AND(OR(a,b),OR(a,c)) becomes AND(a, OR(b,c))
+// NOT(OR(a,b)) becomes AND(NOT(a),NOT(b))
+func (e Expression) Factorize() (Expression,Node) {
+  ...
+} 
 ```
 
 ## Canonical form of a JSON schema
@@ -51,7 +172,7 @@ We define a "canonical form" of a JSON schema in order to:
 * factorize validators whenever possible
 * be able to refactor and optimize a validator, so it becomes relatively immune to schema authoring style
 
-This canonical form is built while building an AST (see below). It provides a JSON schema-compatible view of the AST.
+This canonical form is built while from the AST (see below). It provides a JSON schema-compatible view of the AST.
 
 The canonical form is required to build fast validators and is desirable (perhaps not required) to contribute to the accuracy of other aspects of model code gen.
 
@@ -72,7 +193,7 @@ Rules for a canonical schema:
 * Metadata: title, comments, and descriptions do not contribute to the hash. These are kept in the canonicalized schema, but irrelevant for validation. Use WithMetadataStripped(true) to remove them.
 * $ref
   * All $ref's are rewritten in full to remove all need for "syntactic sugar" such as "$id", "$dynamicAnchor", etc. These keywords do not contribute to the computation of
-    the unique hash: only the hash of the resolved schema matter.
+    the unique hash: only the hash of the resolved schema matters.
   * All schemas in $ref are recursively canonicalized. Two different $ref that yield the same Hash are considered equivalent.
   * In the resulting canonical schema, the first explored $ref with a given hash is used (deterministic output). If anonymous schemas compete with named schemas, the first named schema found takes over.
 * redundant validations
@@ -171,35 +292,4 @@ Rules for a canonical schema:
 * if / then / else: TODO
 * dependentSchema / dependentRequired: TODO
 
-## Validation AST
-
-Package `validation-analyzer/ast` 
-
-This builds the validation tree to apply on some input JSON data - it describes validations with abstract operators.
-
-```go
-type Tree struct {
-  root Node
-}
-
-// Walk an AST tree in a depth-first, left to right manner
-func (t Tree) Walk(apply func(*Node) error)
-
-type NodeKind uint16
-
-const (
-  NodeKindNull NodeKind = iota
-
-)
-
-type ASTNode struct {
-  kind ASTNodeKind
-  path []string
-  expression expressions.ValidationExpression
-  children []Node // child paths
-}
-
-func (n ASTNode) Kind() ASTNodeKind { ... }
-
-```
 
