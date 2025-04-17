@@ -45,6 +45,7 @@ We build an AST of the schema to reason about it without the constraints of its 
 Package `ast`:
 
 ```go
+// Tree represents an Abstract Syntax Tree for a single schema
 type Tree struct {
   root Node
 }
@@ -52,9 +53,19 @@ type Tree struct {
 // Walk an AST tree in a depth-first, left-to-right manner
 func (t Tree) Walk(apply func(*Node) error)
 
-// Schema returns the canonical JSON schema that results from the AST
-func (t Tree) Schema() jsonschema.Schema { ... }
+// Schema returns the canonical JSON schema that results from the AST.
+//
+// The JSONSchema representation may differ depending on the rendering version selected.
+func (t Tree) Schema(json.SchemaVersion) jsonschema.Schema { ... } // TODO: replace param by ...Option
 
+// Forest represents an Abstract Syntax Tree for a collection of schema,
+//
+// Schema factorization is performed over the whole collection.
+type Forest struct {
+  roots []Node
+}
+
+// Node is an AST node representing an elementary element of syntax of the JSON schema.
 type Node struct {
   children []Node
   kind Kind
