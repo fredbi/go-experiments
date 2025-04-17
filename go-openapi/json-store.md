@@ -53,12 +53,6 @@ The interface of a document store is simple, yet extensible. Essentially, this i
 
 Package `interfaces`:
 ```go
-// DocumentSharable allows [stores.Store] objects to provide more services to be shared across [json.Document]s.
-type DocumentSharable interface {
-  // Loader function to grab JSON from a remote or local file location.
-  Loader() func(string) ([]byte,error)
-}
-
 type InternedKey unique.Handle[string]
 
 func (k InternedKey) String() string {
@@ -72,7 +66,7 @@ type Store interface {
   Put(value Value) Reference
   Get(Reference) Value
 
-  // Stuff sharable by different documents (TODO: optional)
+  // Stuff shareable by different documents (TODO: optional)
   // interfaces.DocumentSharable
 
   interfaces.Resettable
