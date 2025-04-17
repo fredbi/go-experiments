@@ -264,10 +264,11 @@ type Pointer struct {
 func (p Pointer) String() string {
   // TODO: escape stuff
   // see github.com/go-openapi/jsonpointer, but we don't have to deal with all the reflect stuff
-  return strings.Join(p.path,"/")
+  return strings.Join(p.path,"/") // TODO: this is obviously a little bit more involved
 }
 
 // NodeKind describes the kind of node in a JSON document
+// TODO: move to light pkg
 type NodeKind uint8
 const (
   NodeKindNull NodeKind = iota
@@ -277,6 +278,7 @@ const (
 )
 
 // ValueKind describes the kind of JSON value held by a node of kind NodeKindScalar
+// TODO: move to light pkg
 type ValueKind uint8
 const (
   ValueKindNull ValueKind = iota
@@ -454,6 +456,22 @@ type BoolValue bool
 */
 
 ```
+
+```go
+// Package light is for internal usage or contrib modules
+package light
+
+// light node doesn't know about which Store or options
+type Node struct {
+  kind NodeKind
+  key unique.Handle[string]  // key for objects properties
+  value stores.Handle // ValueKind for objects and arrays is NullValue
+  children []Node // objects and array have children, nil for scalar nodes
+  // ctx Context // the error context (maybe use a pointer here?) 
+  keysIndex map[unique.Handle[string]]int // lookup index for objects, so Key() finds a key in constant time. Refers to the index of the Node in children.
+}
+```
+
 ## Typed documents
 
 The `json` package may expose a few restricted types of documents. At the moment, there is:
