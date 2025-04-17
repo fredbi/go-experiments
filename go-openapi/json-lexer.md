@@ -24,47 +24,6 @@ This is similar in design to `easyjson/jlexer/Lexer`, but with a super reduced A
 * Examples: `github.com/go-openapi/core/json/lexers/examples` [go.mod]
 * Poolable: Yes
 
-## Interfaces
-
-Package `interfaces`
-```go
-// Resettable is capable of resetting an object to its default or zero value.
-// This is useful when recycling objects made available from a [sync.Pool].
-type Resettable interface{
-  Reset()
-}
-
-// WithErrState is the common interface for all types which manage an internal error state.
-type WithErrState interface {
-  Ok() bool
-  Err() error
-}
-
-// TODO: move to package pools at a high level (swag?)
-
-// Pool wraps a [sync.Pool]
-type Pool[T any] struct {
-  sync.Pool
-
-  Borrow() *T
-  Redeem(*T)
-}
-
-func (p *Pool[T any]) Borrow() *T {...}
-func (p *Pool[T any]) Redeem(*T) {...}
-
-func NewPool[T any]() Pool[T] {
-  ...
-}
-
-// PoolSlice knows how to pool slices based on their underlying array.
-//
-// Note: redeeming a slice invalidates all potential slices based on the same underlying array.
-type Poolslice[T any] struct {
-  Borrow() []T
-  Redeem([]T)
-}
-```
 
 Package `lexers`
 
