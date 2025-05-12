@@ -10,6 +10,6 @@ https://github.com/oasdiff/oasdiff
 
 https://github.com/a-h/rest
 
-github.com/goadesign/goa -
+https://github.com/goadesign/goa
 
 ## [libopenapi](https://github.com/pb33f/libopenapi)
