@@ -15,10 +15,4 @@ type WithErrState interface {
   Err() error
 }
 
-
-//DocumentShareable allows [stores.Store] objects to provide more services to be shared across [json.Document]s.
-type DocumentShareable interface {
-  // Loader function to grab JSON from a remote or local file location.
-  Loader() func(string) ([]byte,error)
-}
 ```
