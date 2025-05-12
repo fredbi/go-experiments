@@ -182,9 +182,9 @@ TODO
 * external slice type (anything that has an iterator)
 
 Supported constructs:
-* type re-aliasing: `type A =B`
-* type "aliasing" (find if there is a better terminology): `type A B`
-* embedded type:
+* type aliasing: `type A =B` (IsAliased)
+* type "definition" (terminology from go spec): `type A B` (IsRedefined)
+* embedded type (IsEmbedded):
   ```go
   struct A {
      B
@@ -193,6 +193,13 @@ Supported constructs:
 * private field (e.g. isDefined bool)
 * struct tags (json, yaml, XML, custom)
 * pointers, but not on slices, maps or `any`
+* composed types that use embedding
+
+Unless wrapped in some external type, there is no situation in which we generate:
+* a channel type
+* a function type
+* a parameterized (generic) type
+
 
 ## Simple schemas
 
