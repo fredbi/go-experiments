@@ -2,13 +2,27 @@
 
 Detailed design
 
+## Hierarchical organization
 A hierarchy of nodes that represent JSON elements organized into arrays and objects in a memory-efficient way.
+
 All these are represented by go slices, not maps: ordering is maintained, and shallow cloning of slice value doesn't require allocating new memory.
-All scalar content is stored in the document store (see below). Memory storage is shared among documents with similar content. In particular, by default, the document will intern strings for keys.
-A document is immutable. Since cloning a document is essentially a copy-on-write operation, it is mandatory to mutate stuff with clones. A documen comes with a "builder" interface to mutate stuff and return a clone, e.g. add/remove things.
+
+All scalar content is stored in the document store (see below). Memory storage is shared among documents with similar content. In particular, by default, the document will intern strings for keys, and the store will try its best to compact/compress values.
+
+At this stage, we don't want the go type system to interfere. Since we are still at a "document" level, the semantics may be left alone and we maintain numbers as strings (more exactly `[]byte` slices).
+
+A unitary node is a very compact structure: typical hierarchical walks would need to inject additional information from the root, passing a pointer to a `ParentContext`.
+
+## Immutability
+A document is immutable. Since cloning a document is essentially a copy-on-write operation, it is mandatory to mutate stuff with clones. A document comes with a "builder" interface to mutate stuff and return a clone, e.g. add/remove things.
+
+## Codec
 
 A document knows how to decode/encode and unmarshal/marshal JSON (essentially the same API as encoding/json).
 
+We may define a sibling `YAMLDocument` to supplement this functionality with (simplified) YAML documents.
+
+## Hierachy traversal
 A document can be walked over and navigated through:
 
 * object keys and array elements can be iterated over
@@ -21,9 +35,14 @@ A JSON document uses string interning for keys (is that something that can be di
 
 Options:
 
-* a document may keep the parsing context of its nodes, to report higher-level errors
+* a document may keep the parsing context of its nodes to report higher-level errors
 * a document may support various tuning options regarding how best to store things (e.g. reduce numbers as soon as possible, compress large strings, etc)
+
 * ...
+
+### Verbatim documents
+
+TODO
 
 ### How about YAML documents?
 
