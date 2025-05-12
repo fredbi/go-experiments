@@ -19,10 +19,13 @@ Interestingly, it supports a variety of external routers. This is an idea I'd li
 https://github.com/oasdiff/oasdiff
 
 https://github.com/a-h/rest
+It is a declarative spec builder, without reliance on code comments or tags, but on explicit declarations alongside your API.
+Interesting.
 
 https://github.com/goadesign/goa
 
 ## [libopenapi](https://github.com/pb33f/libopenapi)
+
 
 ## Interesting findings along the way
 
@@ -35,4 +38,4 @@ Worth taking a look at too: https://github.com/speakeasy-api/easytemplate
 
 linter: https://github.com/speakeasy-api/vacuum
 
-
+https://github.com/ugorji/go/tree/master/codec : compare to the lexer I've built. Interesting.
