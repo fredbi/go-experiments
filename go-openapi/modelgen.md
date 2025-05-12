@@ -159,9 +159,10 @@ Example:
 	ExternalDocs               *spec.ExternalDocumentation // yes
 	WantsRootedErrorPath       bool // not sure
 }
-  ```
+```
 
 Validation-only pieces of data. May be skipped to generate the struct only.
+
 ```go
 TODO
 ```
@@ -259,7 +260,9 @@ Supported constructs:
   struct A {
      B
      ...
-  }```
+  }
+```
+
 * private field (e.g., isDefined bool)
 * struct tags (json, yaml, XML, custom)
 * pointers, but not on slices, maps, or `any`. IsPointer
@@ -270,7 +273,8 @@ Supported constructs:
      C
      D
      ...
-  }```
+  }
+```
 
 Unless wrapped in some external type, there is no situation in which we generate:
 
