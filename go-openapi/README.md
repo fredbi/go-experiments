@@ -22,7 +22,10 @@ and developer's experience accumulated... It would be a pity just to throw it aw
 
 The main and most awaited feature is support for OpenAPI v3 (aka OAIv3) or even v4.
 But many Bothans died trying to do so... it is a _huge_ amount of work ahead. Few people realize how large it is.
-It requires careful design and planning. The difference is that we've 10 years of accumulated feedback and figuring out different designs.
+It requires careful design and planning. The difference is that we've 10 years of accumulated feedback and have figured out different designs.
+
+I've taken a look at [a few existing alternatives](alternatives.md) in the goland space. There are a lot of brilliant ideas. And also a few failures.
+I am very proud that our work inspired many others. But I didn't see any major improvements, especially regarding JSON schema conformance.
 
 In the sections below, I am giving a more comprehensive analysis. Even though OAIv3 is the ultimate goal, it is not the only one and many micro-designs need
 to be questioned, reviewed, and implemented along the way.
