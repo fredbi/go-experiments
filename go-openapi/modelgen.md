@@ -4,9 +4,49 @@ The objective is to generate idiomatic go data structures from a JSON schema.
 It should support all JSON schema versions, from Draft 4 to 2020.
 
 When comparing this approach to go-swagger, I'd like:
+
 * to simplify templates a lot: templates should just be there to iterate over the model structure, not to take big design decisions
 * to simplify model.go a lot, by deferring most of the complex analysis to a `structural-analyzer`
-* to clearly split in the resulting data structure what comes from this analysis (the source) and comes from design decisions/dev-options to map this as a legit go structure
+* to clearly split in the resulting data structure what comes from this analysis (the source) and what comes from design decisions/dev-options to map this as a legit go structure
+
+So we have the following split of responsibilities:
+
+* templates: iterate over the structure, apply the decisions made upstream (e.g., switch templates, etc)
+  * no go name generation, no package name generation
+
+* model.go: iterate over the analyzed AST for structural analysis and make the right decisions about the Go implementation
+  * find a way to make this extensible with plugins (hooks?)?
+  * example: there may be a dozen ways to figure out an enum, etc
+  * decide when to produce a struct, an interface, etc.
+  * take user-guidance into account (x-go-xxx annotations - possibly added via spec overlays -, global config) 
+  * the pieces of information provided by the analyzer about allOf, anyOf, etc should be used to take the correct decision about
+    the best implementation for a serializable Go type
+    * example: reduced allOf, metadata-only, validation-only members, deduplicated members
+  * make sure go names are safe and do not conflict within a package
+  * hard problems: generic types using $dynamicAnchor, ...
+
+* analyzer (structural):
+  * built on top of analyzer (validation) (most of the AST is reusable)
+  * provides a "linter-like" comment about the structure (how far the go implementation diverges from the JSON schema)
+  * should not be much go-specific, more like adapted to all statically-typed languages
+  * proposes names for unnamed things. That's actually challenging.
+  * provide (possibly several) transformed structures that fit allOf, oneOf etc.
+    * for liftable constructs (i.e. degenerate ones)
+    * for reconstructed ones (i.e. deduplicated stuff)
+    * for refactored ones (i.e. deduplicated, with lifted validations)
+  * able to factorize simple stuff like enums
+  * detects and mark const
+  * detects and mark $ref as a "named" thing
+
+How codegen works:
+1. Load JSON Schema spec (possibly a collection, so analysis may try a refactor)
+2. Analyze this (!)
+3. Model this:
+   * Plan for code layout (namespaces - e.g. packages -, required imports, etc)
+   * Prepare the data structure for templates (accepts plugins)
+5. Load the templates repo (accepts overrides, contrib alternatives)
+6. Run templates -> 1 file per model (default, "related models in 1 file", single file)
+7. gofmt / goimport (in batches?)
 
 
 ## Inputs
@@ -221,7 +261,7 @@ type NameContainerContext struct {
 
   Name string // field original name
   Identifier string // go identifier for this name
-  Tags []string // struct tags
+  Tags []string // struct tags -- TODO: xml tags
 }
 
 type ContainerFlags struct {
@@ -261,7 +301,7 @@ type TypeDefinition struct {
   Fields      []NamedContainerContext // fields in a struct or tuple
 
   // interfaces
-  Getters     []NamedContainerContext // getters/setters on unexported fields for an interface
+  Accessors []NamedContainerContext // getters/setters on unexported fields for an interface or composed type (e.g. oneOf/anyOf)
   DiscriminatorField string // discriminator field for discriminated constructs (polymorphic, anyOf, oneOf)
   DefaultValue      any
  }
@@ -290,9 +330,10 @@ Supported constructs:
 * type aliasing: `type A = B` (IsAliased)
 * type "definition" (terminology from go spec): `type A B` (IsRedefined)
 * embedded type (HasEmbedded):
+  
   ```go
-  struct A {
-     B
+  struct A {  // HasEmbedded = true
+     B  // IsEmbedded = true
      ...
   }
 ```
@@ -309,14 +350,62 @@ Supported constructs:
      ...
   }
 ```
+* a parameterized (generic) type: this is generated when we detect the following pattern based on $dynamicRef
+
+https://json-schema.org/blog/posts/dynamicref-and-generics#using-dynamic-references-to-support-generic-types
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://json-schema.blog/list-of-t",
+  "$defs": {
+    "content": {
+      "$dynamicAnchor": "T",
+      "not": true
+    }
+  },
+  "type": "array",
+  "items": {
+    "$dynamicRef": "#T"
+  }
+}
+
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://json-schema.blog/list-of-string",
+  "$defs": {
+    "string-items": {
+      "$dynamicAnchor": "T",
+      "type": "string"
+    }
+  },
+  "$ref": "list-of-t"
+}
+```
+
+In that case, the desired generated type should be:
+```go
+type ListOfT[T any] []T
+```
 
 Generated interfaces only provide getter/setters to unexported fields
+  * setters may be opted-out
+  * we use the Getter/Setters config for interfaces, anyOf and oneOf constructs
+
+Example tuple (inspired from go-swagger):
+```go
+type PetsTuple struct {
+  P0 Dog
+  P1 Cat
+  AdditionalPetsTupleItems []Pet
+}
+```
 
 Unless wrapped in some external type, there is no situation in which we generate:
 
 * a channel type
 * a function type
-* a parameterized (generic) type
+
 
 Pointers should never be mandatory, but in the case of circular references.
 
