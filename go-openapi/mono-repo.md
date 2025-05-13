@@ -27,30 +27,36 @@ Into:
 1. Pick an issue in "core"
 2. PR to fix it, with unit and integration test (in different modules), mention "fixes #123"
 
-A structure that would look something like with a new go-openapi/core github repository:
+A structure that would look something like this, with a new go-openapi/core github repository:
 
 ## go-openapi core
 
 * `github.com/go-openapi/core` - Core go-openapi components
 * `github.com/go-openapi/core/docs` - Source of the go-openapi documentation site (design documents, benchmarks, ...)
 
+Temporarily hosted at github.com/fredbi/core.
+
 ## JSON
 
-A memory-efficient implementation of JSON fully compliant with the standard.
+A memory-efficient implementation of JSON that is fully compliant with the standards (JSON and JSON Schema).
 
 * **`github.com/go-openapi/core/json`** [go.mod] An immutable, verbatim JSON document
 * `github.com/go-openapi/core/json/lexers/default-lexer` - A fast JSON lexer
 * **`github.com/go-openapi/core/json/lexers/default-lexer/examples`** [go.mod] - Sample usage of the lexer
 * **`github.com/go-openapi/core/json/lexers/default-lexer/benchmarks`** [go.mod] - Comparative benchmarks for lexing JSON
-* `github.com/go-openapi/core/json/interfaces` - public type definitions to support JSON
-* `github.com/go-openapi/core/json/internal/nodes` - JSON document internal node
+ 
+* `github.com/go-openapi/core/json/types` - public type definitions to support JSON
+* `github.com/go-openapi/core/json/nodes` - JSON document internal node
+* `github.com/go-openapi/core/json/dynamic` - Dynamic JSON type
+*  `github.com/go-openapi/core/json/nodes/hooks` - Hooks to customize the behavior of a JSON document
 * ~~`github.com/go-openapi/core/json/documents/contrib` [go.mod] - Contributed alternative implementations of the json document~~
 * `github.com/go-openapi/core/json/documents` - additional features pluggable to a JSON document
 *  `github.com/go-openapi/core/json/documents/jsonpath` - JSONPath expressions for a JSON document
-*  `github.com/go-openapi/core/json/documents/hooks` - Hooks to customize the behavior of a JSON document
 * **`github.com/go-openapi/core/json/documents/examples`** [go.mod] - Examples on how to work with JSON documents
+
 * `github.com/go-openapi/core/json/stores/default-store` - A memory-efficient store for JSON documents
 * **`github.com/go-openapi/core/json/stores/default-store/benchmarks`** [go.mod]  - Comparative benchmarks for packing and storing JSON
+
 * `github.com/go-openapi/core/json/writers/default-writer` - A fast JSON document writer
 * **`github.com/go-openapi/core/json/writers/default-writer/benchmarks`** [go.mod] - Comparative benchmarks for writing JSON
 
@@ -58,12 +64,21 @@ A memory-efficient implementation of JSON fully compliant with the standard.
 * `github.com/go-openapi/core/json/writers/contrib` [go.mod] - Contributed alternative implementations of the json document writer
 * `github.com/go-openapi/core/json/stores/contrib` [go.mod] - Contributed alternative implementations of the json document store
 
+TODO:
+* [] finish writer
+* [] refact lexer (duplicate code with VerbatimLexer)
+* [x] default store
+* [ ] refact constrained documents
+* [] json pointer
+* [] jsonpath (reuse existing)
+
 ## JSON schema
 
 An advanced JSON schema analyzer to build efficient validators and generated targets.
 
 * **`github.com/go-openapi/core/jsonschema`** [go.mod] - JSON schema implementation based on a json document (draft 4 to draft 2020)
-> not sure it wouldn't be better side by side with json.Document
+> Not sure if it wouldn't be better side by side with json.Document
+
 * `github.com/go-openapi/core/jsonschema/analyzer` - JSON schema specialized analyzers
 * `github.com/go-openapi/core/jsonschema/analyzer/common` - Schema analysis techniques common to all analyzers
 * `github.com/go-openapi/core/jsonschema/analyzer/common/ast` - Abstract Syntax Tree for schema analysis
@@ -71,14 +86,15 @@ An advanced JSON schema analyzer to build efficient validators and generated tar
 
 * `github.com/go-openapi/core/jsonschema/analyzer/validation` - An analyzer dedicated to producing efficient validators
 
-* `github.com/go-openapi/core/jsonschema/analyzer/generation` - An analyzer dedicated to producing idiomatic generated targets
-* `github.com/go-openapi/core/jsonschema/analyzer/generation/targets - Target-specific analyzers
-* `github.com/go-openapi/core/jsonschema/analyzer/generation/targets/golang` - An analyzer dedicated to producing clean go
-* `github.com/go-openapi/core/jsonschema/analyzer/generation/targets/protobuf` [go.mod] - An analyzer dedicated to producing correct and efficient protobuf
+* `github.com/go-openapi/core/jsonschema/analyzer/structural` - An analyzer dedicated to producing idiomatic generated targets
+* `github.com/go-openapi/core/jsonschema/analyzer/structural/targets - Target-specific analyzers
+* `github.com/go-openapi/core/jsonschema/analyzer/structural/targets/golang` - An analyzer dedicated to producing clean go
+* `github.com/go-openapi/core/jsonschema/analyzer/structural/targets/protobuf` [go.mod] - An analyzer dedicated to producing correct and efficient protobuf
 * `github.com/go-openapi/core/jsonschema/analyzer/generation/targets/doc` - An analyzer dedicated to producing documentation
 * `github.com/go-openapi/core/jsonschema/validator` - A runtime validator based on analysis, as a closure
 * **`github.com/go-openapi/core/jsonschema/validator/benchmarks`** [go.mod] - Comparative benchmarks for JSON schema validators
 * `github.com/go-openapi/core/jsonschema/converter` - JSON schema version converter
+* `github.com/go-openapi/core/jsonschema/cmd/jsonschema-tool` - A minimal CLI to support operations performed in this module (validate, convert, transform)
 
 ## Model code generation
 
@@ -113,11 +129,22 @@ A versatile API generation system based on OpenAPI (v2, v3.x)
 
 Reverse-engineering of your API code to produce an OpenAPI spec or JSON schema.
 
+An interesting alternative is possible, without resorting to Go comments & annotations, but with code.
+
 * **`github.com/go-openapi/core/genspec`** [go.mod] - OpenAPI spec generation from source code
 * `github.com/go-openapi/core/genspec/cmd/genspec` - A minimal CLI to generate spec from source
 * `github.com/go-openapi/core/genspec/scanner` - The code scanner and implementation of source annotations
 * `github.com/go-openapi/core/genspec/scanner/annotations` - Definition of supported source annotations
 
+If we continue along the "tag comment" line of thought, we should at the very least:
+* Depart from regexp - they are unmaintainable and buggy:
+  * not sure if PEG grammars are much better. At least, they're more readable
+  * how about a ABNF parser? https://github.com/pandatix/go-abnf/
+  * I like this https://github.com/alecthomas/participle
+  * at any rate we have this https://github.com/hedhyw/rex to improve readability
+  * 
+* Detect patterns in code to better figure out the API
+* 
 ## Documentation generation
 
 Static documentation generator from JSON schema and OpenAPI spec.
@@ -135,20 +162,27 @@ Static documentation generator from JSON schema and OpenAPI spec.
 * `github.com/go-openapi/core/gendoc/generator/targets/contrib/templates` - contributed documentation templates
 * `github.com/go-openapi/core/gendoc/generator/targets/contrib/settings` - contributed documentation settings
 
+See also an existing spec navigator based on mermaid.
+
 ## Stubs
 
 Examples and test case generator for JSON schema and OpenAPI spec.
 
-Ships with a python tool to play with against your favorite LLM provider.
+Ships with a ~Python~ Go tool to play with against your favorite LLM provider.
 
 * **`github.com/go-openapi/core/stubs`** [go.mod] - A faker utility for JSON schema and OpenAPI spec
 * `github.com/go-openapi/core/stubs/cmd/genstubs` - A minimal CLI to generate JSON examples and test cases
 * `github.com/go-openapi/core/stubs/generator` - The stubs generator package
 * `github.com/go-openapi/core/stubs/generator/contrib`
 
+Open question: Should we pepper out the bulk of faking stuff across repos or centralize everything in here?
+
+Use-case for LLM: figure out (e.g using embeddings) the class of faker that best suits a JSON schema property.
+
 ## Serve spec
 
 * `github.com/go-openapi/core/serve` [go.mod] -- A simple http server to serve specs with UI
+* `github.com/go-openapi/core/serve/cmd/oai-serve` -- Minimal CLI to serve specs and their documentation
 
 ## OpenAPI spec (v2, v3.x)
 
@@ -163,10 +197,13 @@ Ships with a python tool to play with against your favorite LLM provider.
 * `github.com/go-openapi/core/spec/bundler` - OpenAPI spec bundling
 * `github.com/go-openapi/core/spec/converter` - OpenAPI spec version converter
 * `github.com/go-openapi/core/spec/cmd/oaispec` - A minimal CLI frontend for the OpenAPI spec tool: validate, lint, mixin, diff, convert, bundle, amend
+* `github.com/go-openapi/core/spec/overlays` - Handling overlays on a spec. Should be adapted to support v2.
 
 ## errors
 
 * `github.com/go-openapi/core/errors` [go.mod] - A common error type for go-openapi repositories
+
+Open question: not sure if this is useful any longer.
 
 ## API runtime
 
@@ -187,6 +224,9 @@ A pluggable runtime environment to run API clients and servers.
 
 * `github.com/go-openapi/core/templates-repo` [go.mod] - Templates repository for code generation
 
+TODO:
+* [] backport templates repo from go-swagger
+
 ## string formats
 
 * **`github.com/go-openapi/core/strfmt`** [go.mod] - Types to support standard string formats
@@ -195,12 +235,14 @@ A pluggable runtime environment to run API clients and servers.
 * **`github.com/go-openapi/core/strfmt/goswagger-bson-formats`** [go.mod] - Extra string format types extended with BSON support
 * **`github.com/go-openapi/core/strfmt/contrib-formats`** [go.mod] - Extra contributed formats
 * **`github.com/go-openapi/core/example`** [go.mod] - Code examples to build a custom format and use it with go-swagger and your API
-* 
+ 
 ## swag: a bag of utilities
 
 * `github.com/go-openapi/core/swag` - A bag of utilities for swagger
 * `github.com/go-openapi/core/swag/conv`
 * `github.com/go-openapi/core/swag/mangling` - Name mangling to support code generation
+   * look at that: https://github.com/codemodus/kace
+* `github.com/go-openapi/core/swag/mangling/inflect` - Pluralization in English
 * `github.com/go-openapi/core/swag/stringutils`
 * `github.com/go-openapi/core/swag/yamlutils` - Utilities to deal with YAML
 * `github.com/go-openapi/core/swag/cli` - Utilities to deal with command line interfaces
@@ -212,8 +254,10 @@ A pluggable runtime environment to run API clients and servers.
 ## plugin support
 * **`github.com/go-openapi/core/plugin`** [go.mod] - Pluggable feature facility based on hashicorp plugin
 
-Perhaps move the following one to go-openapi? For now, let's keep the tradition alive.
-
+Perhaps we should move the following one to go-openapi? For now, let's keep the tradition alive.
+Like so?
+* **`github.com/go-openapi/core/cmd/swagger`** ??[go.mod]
+ 
 ## go-swagger CLI
 
 A CLI tool that reunites all go-openapi features within a single tool with binary and docker distributions.
