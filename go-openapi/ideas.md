@@ -243,7 +243,7 @@ Spec analyzer:
 Spec linter:
 * based on linting rules
  
-## Model generation
+## [Model generation](./modelgen.md)
 
 Ideas:
 
@@ -267,7 +267,7 @@ Features outline:
 ```go
 type Nullable[T any] struct {
   isDefined bool
-  T
+  T // doesn't work in golang yet
 }
 
 func (n Nullable[T]) IsNull() bool {
@@ -318,22 +318,25 @@ func (n Nullable[T]) Value() T {
     * support parts with common property names (i.e. inline & merge validations)
   
 * contributed extensions
-    * pluggable extensions to the model generation logic (i.e. routes processing logic to plugin whenever some `x-*`extension is found
-    * contributed templates to support pluggable extensions
+    * Pluggable extensions to the model generation logic (i.e. routes processing logic to plugin whenever some `x-*`extension is found
+    * Contributed templates to support pluggable extensions
 
 Out of this scope: generating schema from JSON data (the classical nodeJS basic tool)?
 
-## API generation
+## [API generation](./apigen.md)
 
 Same modular and extensible approach as the one described for models.
 
 Features:
 * handlers generation
-* supporting files generation
+* generation of supporting files
   * main server
-  * initialization
+    * Here we can't take some inspiration from others, who support common frameworks such as gin, fiber, etc
+  * API initialization
 
 * client generation 
+
+Need a lot of additions to support the new concepts in OAI v3.
 
 ## Spec generation
 
