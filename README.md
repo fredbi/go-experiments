@@ -11,3 +11,7 @@ See [a few details](transactional-roundtrip/README.md)
 ## go-openapi reflections & design ideas
 
 [thoughts](go-openapi/README.md)
+
+## geo hashing: last summer's thoughts
+
+[thoughts](geo-hash/README.md)
