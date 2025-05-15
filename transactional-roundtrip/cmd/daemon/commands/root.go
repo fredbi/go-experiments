@@ -37,7 +37,6 @@ func Root() *cli.Command {
 		appName,
 		log.WithLevel("debug"),
 		log.WithRedirectStdLog(true), // redirects global standard log to this logger
-		log.WithCallerSkip(0),
 	)
 
 	// load config from file or environment variables
